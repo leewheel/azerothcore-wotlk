@@ -38,9 +38,10 @@ void WaypointMovementGenerator<Creature>::LoadPath(Creature* creature)
 
     if (!i_path)
     {
+        // alvin-remove-log
         // No movement found for entry
-//        LOG_ERROR("sql.sql", "WaypointMovementGenerator::LoadPath: creature {} ({}) doesn't have waypoint path id: {}",
-//            creature->GetName(), creature->GetGUID().ToString(), path_id);
+        LOG_ERROR("sql.sql", "WaypointMovementGenerator::LoadPath: creature {} ({}) doesn't have waypoint path id: {}",
+            creature->GetName(), creature->GetGUID().ToString(), path_id);
         return;
     }
 

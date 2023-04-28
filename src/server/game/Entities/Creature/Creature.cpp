@@ -2494,7 +2494,10 @@ void Creature::SendAIReaction(AiReaction reactionType)
 
     ((WorldObject*)this)->SendMessageToSet(&data, true);
 
-    LOG_DEBUG("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
+    if (reactionType == AI_REACTION_HOSTILE)
+        LOG_TRACE("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
+    else
+        LOG_DEBUG("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
 }
 
 void Creature::CallAssistance(Unit* target /*= nullptr*/)

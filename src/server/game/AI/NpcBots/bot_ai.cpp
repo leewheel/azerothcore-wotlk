@@ -12089,7 +12089,7 @@ void bot_ai::ApplyItemEnchantment(Item* item, EnchantmentSlot eslot, uint8 slot)
                 _stats[slot][BOT_STAT_MOD_DAMAGE_MAX] += enchant_amount;
                 break;
             case ITEM_ENCHANTMENT_TYPE_EQUIP_SPELL:
-                if (enchant_spell_id)
+                if (enchant_spell_id && sSpellMgr->GetSpellInfo(enchant_spell_id))
                 {
                     int32 basepoints = 0;
                     // Random Property Exist - try found basepoints for spell (basepoints depends from item suffix factor)

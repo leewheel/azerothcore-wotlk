@@ -802,8 +802,8 @@ bool bot_ai::doCast(Unit* victim, uint32 spellId, TriggerCastFlags flags)
         !m_botSpellInfo->HasEffect(SPELL_EFFECT_SELF_RESURRECT))
     {
         // alvin-remove-log
-        LOG_ERROR("npcbots", "bot_ai::doCast(): {} (bot class {}) tried to cast spell {} on a dead target {}",
-            me->GetName().c_str(), _botclass, spellId, victim->GetName().c_str());
+        // LOG_ERROR("npcbots", "bot_ai::doCast(): {} (bot class {}) tried to cast spell {} on a dead target {}",
+        //     me->GetName().c_str(), _botclass, spellId, victim->GetName().c_str());
         return false;
     }
 
@@ -14018,8 +14018,9 @@ void bot_ai::InitEquips()
             {
                 if (i <= BOT_SLOT_RANGED && einfo->ItemEntry[i] != 0)
                 {
-                    LOG_ERROR("npcbots", "Wanderer bot {} id {} level {} can't generate req gear in slot {}, generating standard item!",
-                        me->GetName().c_str(), me->GetEntry(), uint32(me->GetLevel()), uint32(i));
+                    // alvin-remove-log
+                    // LOG_ERROR("npcbots", "Wanderer bot {} id {} level {} can't generate req gear in slot {}, generating standard item!",
+                    //     me->GetName().c_str(), me->GetEntry(), uint32(me->GetLevel()), uint32(i));
 
                     item = Item::CreateItem(einfo->ItemEntry[i], 1);
                     ASSERT(item, "Failed to init standard Item for wandering bot!");

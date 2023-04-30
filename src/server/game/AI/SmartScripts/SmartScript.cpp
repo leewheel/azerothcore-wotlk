@@ -1549,7 +1549,7 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
                         if (SmartAI* ai = CAST_AI(SmartAI, target->ToCreature()->AI()))
                             ai->GetScript()->StoreCounter(e.action.setCounter.counterId, e.action.setCounter.value, e.action.setCounter.reset, e.action.setCounter.subtract);
                         else
-                            LOG_ERROR("sql.sql", "SmartScript: Action target for SMART_ACTION_SET_COUNTER is not using SmartAI, skipping");
+                            LOG_ERROR("sql.sql", "SmartScript: Action target for SMART_ACTION_SET_COUNTER is not using SmartAI, skipping"); //alvin-remove-log
                     }
                     else if (IsGameObject(target))
                     {

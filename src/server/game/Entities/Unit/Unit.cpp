@@ -2091,6 +2091,9 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
                 damage = this->SpellDamageBonusTaken(caster, i_spellProto, damage, SPELL_DIRECT_DAMAGE);
             }
 
+            // Script Hook For DamageShields -- Allow scripts to change the Damage
+            sScriptMgr->ModifySpellDamageTaken(this, victim, reinterpret_cast<int32 &>(damage), i_spellProto);
+
             uint32 absorb = 0;
 
             DamageInfo dmgInfo(victim, this, damage, i_spellProto, i_spellProto->GetSchoolMask(), SPELL_DIRECT_DAMAGE);
@@ -11827,7 +11830,7 @@ void Unit::SendHealSpellLog(HealInfo const& healInfo, bool critical)
 int32 Unit::HealBySpell(HealInfo& healInfo, bool critical)
 {
     uint32 heal = healInfo.GetHeal();
-    sScriptMgr->ModifyHealReceived(this, healInfo.GetTarget(), heal, healInfo.GetSpellInfo());
+    sScriptMgr->ModifyHealReceived(healInfo.GetTarget(), healInfo.GetHealer(), heal, healInfo.GetSpellInfo());
     healInfo.SetHeal(heal);
 
     // calculate heal absorb and reduce healing

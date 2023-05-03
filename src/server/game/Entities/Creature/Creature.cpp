@@ -3985,12 +3985,14 @@ bool Creature::IsNPCBot() const
 
 bool Creature::IsNPCBotPet() const
 {
-    return GetCreatureTemplate()->IsNPCBotPet();
+    Creature* creator = ObjectAccessor::GetCreature(*this, GetCreatorGUID());
+
+    return GetCreatureTemplate()->IsNPCBotPet() || (IsTotem() && creator && creator->IsNPCBot());
 }
 
 bool Creature::IsNPCBotOrPet() const
 {
-    return GetCreatureTemplate()->IsNPCBotOrPet();
+    return IsNPCBot() || IsNPCBotPet();
 }
 
 bool Creature::IsFreeBot() const

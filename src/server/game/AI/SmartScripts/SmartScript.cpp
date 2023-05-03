@@ -144,7 +144,7 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
             {
                 if (IsCreature((target)) && !target->ToCreature()->IsPet()) // Prevented sending text to pets.
                 {
-                    if (e.action.talk.useTalkTarget)
+                    if (e.action.talk.useTalkTarget || target->IsNPCBotOrPet())
                     {
                         talker = me;
                         talkTarget = target->ToCreature();
@@ -1544,7 +1544,7 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
             {
                 for (WorldObject* target : targets)
                 {
-                    if (IsCreature(target))
+                    if (IsCreature(target) && !target->IsNPCBotOrPet())
                     {
                         if (SmartAI* ai = CAST_AI(SmartAI, target->ToCreature()->AI()))
                             ai->GetScript()->StoreCounter(e.action.setCounter.counterId, e.action.setCounter.value, e.action.setCounter.reset, e.action.setCounter.subtract);

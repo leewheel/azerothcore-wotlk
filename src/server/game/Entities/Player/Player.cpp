@@ -11076,7 +11076,7 @@ void Player::AddSpellAndCategoryCooldowns(SpellInfo const* spellInfo, uint32 ite
     // category spells
     if (cat && catrec > 0)
     {
-        _AddSpellCooldown(spellInfo->Id, 0, itemId, recTime, true, true);
+        _AddSpellCooldown(spellInfo->Id, cat, itemId, recTime, true, true);
         if (needsCooldownPacket)
         {
             WorldPacket data;

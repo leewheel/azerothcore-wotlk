@@ -10894,6 +10894,9 @@ bool Unit::Attack(Unit* victim, bool meleeAttack)
         InterruptSpell(CURRENT_MELEE_SPELL, true, true, true);
         if (!meleeAttack)
             ClearUnitState(UNIT_STATE_MELEE_ATTACKING);
+    } else {
+        if (meleeAttack)
+            SendMeleeAttackStart(victim);
     }
 
     if (m_attacking)
@@ -10938,8 +10941,13 @@ bool Unit::Attack(Unit* victim, bool meleeAttack)
     if (haveOffhandWeapon() && isAttackReady(OFF_ATTACK))
         setAttackTimer(OFF_ATTACK, ATTACK_DISPLAY_DELAY);
 
-    if (meleeAttack)
-        SendMeleeAttackStart(victim);
+    if (GetTypeId() == TYPEID_PLAYER)
+    {
+        for (Unit* controlled : m_Controlled)
+            if (Creature* cControlled = controlled->ToCreature())
+                if (CreatureAI* controlledAI = cControlled->AI())
+                    controlledAI->OwnerAttacked(victim);
+    }
 
     return true;
 }

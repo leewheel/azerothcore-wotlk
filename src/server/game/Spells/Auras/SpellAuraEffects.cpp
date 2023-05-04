@@ -2679,6 +2679,8 @@ void AuraEffect::HandleAuraModPacify(AuraApplication const* aurApp, uint8 mode, 
     {
         target->SetUnitFlag(UNIT_FLAG_PACIFIED);
         //target->AttackStop(); // pussywizard: why having this flag prevents from being in combat? it should just prevent melee attack
+        target->ClearUnitState(UNIT_STATE_MELEE_ATTACKING);
+        target->SendMeleeAttackStop(target->GetVictim());
     }
     else
     {

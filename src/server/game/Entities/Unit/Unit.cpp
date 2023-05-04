@@ -10844,8 +10844,8 @@ bool Unit::Attack(Unit* victim, bool meleeAttack)
         return false;
     }
 
-    //if (HasUnitFlag(UNIT_FLAG_PACIFIED)) // pussywizard: why having this flag prevents from entering combat? it should just prevent melee attack
-    //    return false;
+    if (HasUnitFlag(UNIT_FLAG_PACIFIED)) // pussywizard: why having this flag prevents from entering combat? it should just prevent melee attack
+        meleeAttack = false;
 
     // nobody can attack GM in GM-mode
     if (victim->GetTypeId() == TYPEID_PLAYER)

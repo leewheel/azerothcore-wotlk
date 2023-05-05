@@ -3992,7 +3992,9 @@ bool Creature::IsNPCBotPet() const
 
 bool Creature::IsNPCBotOrPet() const
 {
-    return IsNPCBot() || IsNPCBotPet();
+    auto owner = GetOwner();
+    return IsNPCBot() || IsNPCBotPet()
+        || (owner && ((owner->IsPlayer() && owner->ToPlayer()->HaveBot()) || owner->IsNPCBot()));
 }
 
 bool Creature::IsFreeBot() const

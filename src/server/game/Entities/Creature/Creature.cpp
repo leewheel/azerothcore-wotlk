@@ -3985,16 +3985,20 @@ bool Creature::IsNPCBot() const
 
 bool Creature::IsNPCBotPet() const
 {
-    Creature* creator = ObjectAccessor::GetCreature(*this, GetCreatorGUID());
-
-    return GetCreatureTemplate()->IsNPCBotPet() || (IsTotem() && creator && creator->IsNPCBot());
+    return GetCreatureTemplate()->IsNPCBotPet();
 }
 
 bool Creature::IsNPCBotOrPet() const
 {
     auto owner = GetOwner();
-    return IsNPCBot() || IsNPCBotPet()
-        || (owner && ((owner->IsPlayer() && owner->ToPlayer()->HaveBot()) || owner->IsNPCBot()));
+    return GetCreatureTemplate()->IsNPCBotOrPet();
+}
+
+bool Creature::IsNPCBotTotemOrSummon() const
+{
+    auto owner = GetOwner();
+    Creature* creator = ObjectAccessor::GetCreature(*this, GetCreatorGUID());
+    return !GetCreatureTemplate()->IsNPCBotOrPet() && ((owner && owner->IsNPCBot()) || (IsTotem() && creator && creator->IsNPCBot()));
 }
 
 bool Creature::IsFreeBot() const

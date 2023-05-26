@@ -6,6 +6,7 @@
 #include "bot_GridNotifiers.h"
 #include "botdatamgr.h"
 #include "botmgr.h"
+#include "botgearscore.h"
 #include "botgossip.h"
 #include "botspell.h"
 #include "bottext.h"
@@ -258,6 +259,8 @@ bot_ai::bot_ai(Creature* creature) : CreatureAI(creature)
 
     _wmoAreaUpdateTimer = 0;
 
+    _contestedPvPTimer = 0;
+
     _ownerGuid = 0;
 
     _wanderer = false;
@@ -323,7 +326,7 @@ const std::string& bot_ai::LocalizedNpcText(Player const* forPlayer, uint32 text
 
         if (!unk_botstrings.count(textId))
         {
-        	LOG_ERROR("entities.player", "NPCBots: bot text string #{} is not localized, at least for {}",
+            LOG_ERROR("entities.player", "NPCBots: bot text string #{} is not localized, at least for {}",
                 textId, localeNames[loc]);
 
             std::ostringstream msg;
@@ -587,6 +590,7 @@ void bot_ai::ResetBotAI(uint8 resetType)
     {
         _atHome = false;
         spawned = false;
+        ResetContestedPvP();
     }
 }
 
@@ -729,6 +733,7 @@ SpellCastResult bot_ai::CheckBotCast(Unit const* victim, uint32 spellId) const
         case BOT_CLASS_DARK_RANGER:
         case BOT_CLASS_NECROMANCER:
         case BOT_CLASS_SEA_WITCH:
+        case BOT_CLASS_CRYPT_LORD:
             break;
         default:
             LOG_ERROR("entities.player", "CheckBotCast(): Unknown bot class {}", _botclass);
@@ -801,10 +806,9 @@ bool bot_ai::doCast(Unit* victim, uint32 spellId, TriggerCastFlags flags)
         !m_botSpellInfo->HasEffect(SPELL_EFFECT_RESURRECT_NEW) &&
         !m_botSpellInfo->HasEffect(SPELL_EFFECT_SELF_RESURRECT))
     {
-        // alvin-remove-log
-        // LOG_ERROR("npcbots", "bot_ai::doCast(): {} (bot class {}) tried to cast spell {} on a dead target {}",
-        //     me->GetName().c_str(), _botclass, spellId, victim->GetName().c_str());
-        return false;
+        LOG_DEBUG("npcbots", "bot_ai::doCast(): {} (bot class {}) tried to cast spell {} on a dead target {}",
+            me->GetName().c_str(), _botclass, spellId, victim->GetName().c_str());
+        //return false;
     }
 
     //spells with cast time
@@ -1097,12 +1101,12 @@ bool bot_ai::CanBotMoveVehicle() const
 void bot_ai::MoveToSendPosition(Position const& mpos)
 {
     EventRemoveBotAwaitState(BOT_AWAIT_SEND);
-    if (me->GetExactDist(mpos) <= 70.f && me->CanFreeMove())
+    if (me->GetExactDist(mpos) <= 70.0f && !CCed(me, true))
     {
         SetBotCommandState(BOT_COMMAND_STAY);
         me->InterruptNonMeleeSpells(true);
         BotMovement(BOT_MOVE_POINT, &mpos, nullptr, false);
-        if (botPet && botPet->CanFreeMove())
+        if (botPet && !CCed(botPet, true))
         {
             botPet->GetBotPetAI()->SetBotCommandState(BOT_COMMAND_STAY);
             botPet->InterruptNonMeleeSpells(true);
@@ -2135,6 +2139,10 @@ void bot_ai::_listAuras(Player const* player, Unit const* unit) const
             }
             botstring << "\n" << LocalizedNpcText(player, BOT_TEXT_RESISTANCE) << ": " << resist << ": " << uint32(curresist);
         }
+
+        auto scores = GetBotGearScores();
+        botstring << "\nGear score total: " << scores.first << ", avg: " << scores.second;
+
         botstring << "\n" << LocalizedNpcText(player, BOT_TEXT_COMMAND_STATES) << ":";
         if (HasBotCommandState(BOT_COMMAND_FOLLOW))
             botstring << " " << LocalizedNpcText(player, BOT_TEXT_COMMAND_FOLLOW);
@@ -2318,6 +2326,7 @@ void bot_ai::SetStats(bool force)
         case BOT_CLASS_DARK_RANGER:
         case BOT_CLASS_NECROMANCER:
         case BOT_CLASS_SEA_WITCH:
+        case BOT_CLASS_CRYPT_LORD:
             break;
 
         default:
@@ -2397,6 +2406,8 @@ void bot_ai::SetStats(bool force)
             strmult = 0.f; agimult = 0.f; break;
         case BOT_CLASS_SEA_WITCH:
             strmult = 0.f; agimult = 2.f; break;
+        case BOT_CLASS_CRYPT_LORD:
+            strmult = 9.f; agimult = 0.f; break;
         default:
             LOG_ERROR("entities.player", "_MeleeDamageUpdate(): NIY myclass {}!", uint32(myclass));
             strmult = 0.f; agimult = 0.f; break;
@@ -2557,6 +2568,10 @@ void bot_ai::SetStats(bool force)
         {
             value += 5.f * _getTotalBotStat(BOT_STAT_MOD_INTELLECT);
         }
+        if (_botclass == BOT_CLASS_CRYPT_LORD)
+        {
+            armor_mod += mylevel >= 60 ? 1.0f : mylevel >= 40 ? 0.5f : mylevel >= 20 ? 0.25f : 0.125f;
+        }
     }
 
     value *= armor_mod;
@@ -2578,7 +2593,7 @@ void bot_ai::SetStats(bool force)
             value += mylevel * 5; //total 498 at 83
         if (_botclass == BOT_CLASS_DREADLORD)
             value += mylevel * 3; //total 332 at 83
-        if (_botclass == BOT_CLASS_DARK_RANGER || _botclass == BOT_CLASS_SEA_WITCH)
+        if (_botclass == BOT_CLASS_DARK_RANGER || _botclass == BOT_CLASS_SEA_WITCH || _botclass == BOT_CLASS_CRYPT_LORD)
             value += mylevel * 2; //total 249 at 83
 
         resistbonus[i-1] = int32(value);
@@ -2689,6 +2704,11 @@ void bot_ai::SetStats(bool force)
     {
         tempval -= 0.3f;
     }
+    if (_botclass == BOT_CLASS_CRYPT_LORD)
+    {
+        value -= 0.3f;
+        tempval -= 0.15f;
+    }
 
     dmg_taken_phy = value;
     dmg_taken_mag = tempval;
@@ -2782,6 +2802,9 @@ void bot_ai::SetStats(bool force)
             case BOT_CLASS_DARK_RANGER:
             case BOT_CLASS_SEA_WITCH:
                 haste_per_lvl = 0.5f;
+                break;
+            case BOT_CLASS_CRYPT_LORD:
+                haste_per_lvl = 0.35f;
                 break;
             default:
                 haste_per_lvl = 0.25f;
@@ -2896,6 +2919,10 @@ void bot_ai::SetStats(bool force)
     if (_botclass == BOT_CLASS_DREADLORD)
     {
         value += 40.f;
+    }
+    if (_botclass == BOT_CLASS_CRYPT_LORD)
+    {
+        value += 20.f;
     }
 
     expertise = value;
@@ -3307,6 +3334,11 @@ void bot_ai::SetStats(bool force)
         {
             //bonus from intellect
             value += 2.f * _getTotalBotStat(BOT_STAT_MOD_INTELLECT);
+        }
+        if (_botclass == BOT_CLASS_CRYPT_LORD)
+        {
+            //bonus from strength
+            value += 2.f * _getTotalBotStat(BOT_STAT_MOD_STRENGTH);
         }
 
         spellpower = uint32(value);
@@ -4468,6 +4500,7 @@ bool bot_ai::CheckAttackTarget()
         case BOT_CLASS_SPELLBREAKER:
         case BOT_CLASS_DARK_RANGER:
         case BOT_CLASS_SEA_WITCH:
+        case BOT_CLASS_CRYPT_LORD:
             break;
         default:
             LOG_ERROR("entities.player", "bot_ai: CheckAttackTarget() - unknown bot class {}", _botclass);
@@ -5236,7 +5269,7 @@ bool bot_ai::AdjustTankingPosition(Unit const* mytarget) const
 
 void bot_ai::CheckAttackState()
 {
-    if (me->GetVictim())
+    if (me->GetVictim() && me->GetVictim()->IsAlive())
     {
         if (HasRole(BOT_ROLE_DPS) && !me->HasAuraType(SPELL_AURA_MOD_STEALTH) && !me->HasAuraType(SPELL_AURA_MOD_INVISIBILITY) &&
             !IsShootingWand())
@@ -6579,8 +6612,8 @@ void bot_ai::_OnHealthUpdate() const
     //Sphynx bonus (some equip slots unavailable)
     if (_botclass == BOT_CLASS_SPHYNX)
         bonuspct += 50;
-    //Dreadlord's vitality
-    if (_botclass == BOT_CLASS_DREADLORD)
+    //Dreadlord's / Crypt Lord's vitality
+    if (_botclass == BOT_CLASS_DREADLORD || _botclass == BOT_CLASS_CRYPT_LORD)
         bonuspct += 20;
     if (bonuspct)
         m_totalhp = (m_totalhp * (100 + bonuspct)) / 100;
@@ -6623,6 +6656,8 @@ void bot_ai::_OnManaUpdate() const
         m_basemana = BASE_MANA_NECROMANCER;
     if (_botclass == BOT_CLASS_SEA_WITCH)
         m_basemana = float(BASE_MANA_1_SEA_WITCH) + (BASE_MANA_10_SEA_WITCH - BASE_MANA_1_SEA_WITCH) * (mylevel/83.f);
+    if (_botclass == BOT_CLASS_CRYPT_LORD)
+        m_basemana = float (BASE_MANA_1_CRYPT_LORD) + (BASE_MANA_10_CRYPT_LORD - BASE_MANA_1_CRYPT_LORD) * (mylevel/83.f);
     //TC_LOG_ERROR("entities.player", "classinfo base mana = %f", m_basemana);
 
     me->SetCreateMana(uint32(m_basemana));
@@ -6704,6 +6739,8 @@ void bot_ai::_OnManaRegenUpdate() const
                 basemana = BASE_MANA_1_DARK_RANGER;
             else if (_botclass == BOT_CLASS_SEA_WITCH)
                 basemana = BASE_MANA_1_SEA_WITCH;
+            else if (_botclass == BOT_CLASS_CRYPT_LORD)
+                basemana = BASE_MANA_1_CRYPT_LORD;
             else
                 basemana = 0.f;
 
@@ -7202,6 +7239,8 @@ bool bot_ai::OnGossipHello(Player* player, uint32 /*option*/)
             gossipTextId = GOSSIP_NORMAL_CUSTOM_DARKRANGER;
         else if (_botclass == BOT_CLASS_SEA_WITCH)
             gossipTextId = GOSSIP_NORMAL_CUSTOM_SEAWITCH;
+        else if (_botclass == BOT_CLASS_CRYPT_LORD)
+            gossipTextId = GOSSIP_NORMAL_CUSTOM_CRYPTLORD;
         else
             gossipTextId = GOSSIP_NORMAL_SERVE_MASTER;
     }
@@ -7215,6 +7254,8 @@ bool bot_ai::OnGossipHello(Player* player, uint32 /*option*/)
             gossipTextId = GOSSIP_GREET_CUSTOM_DARKRANGER;
         else if (_botclass == BOT_CLASS_SEA_WITCH)
             gossipTextId = GOSSIP_GREET_CUSTOM_SEAWITCH;
+        else if (_botclass == BOT_CLASS_CRYPT_LORD)
+            gossipTextId = GOSSIP_GREET_CUSTOM_CRYPTLORD;
         else
             gossipTextId = GOSSIP_GREET_NEED_SMTH;
     }
@@ -7261,6 +7302,11 @@ bool bot_ai::OnGossipHello(Player* player, uint32 /*option*/)
             {
                 message1 << LocalizedNpcText(player, BOT_TEXT_HIREWARN_SEAWITCH);
                 message2 << LocalizedNpcText(player, BOT_TEXT_HIREOPTION_SEAWITCH);
+            }
+            else if (_botclass == BOT_CLASS_CRYPT_LORD)
+            {
+                message1 << LocalizedNpcText(player, BOT_TEXT_HIREWARN_CRYPTLORD);
+                message2 << LocalizedNpcText(player, BOT_TEXT_HIREOPTION_CRYPTLORD);
             }
             else
             {
@@ -7474,6 +7520,8 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
             gossipTextId = GOSSIP_NORMAL_CUSTOM_DARKRANGER;
         else if (_botclass == BOT_CLASS_SEA_WITCH)
             gossipTextId = GOSSIP_NORMAL_CUSTOM_SEAWITCH;
+        else if (_botclass == BOT_CLASS_CRYPT_LORD)
+            gossipTextId = GOSSIP_NORMAL_CUSTOM_CRYPTLORD;
         else
             gossipTextId = GOSSIP_NORMAL_SERVE_MASTER;
     }
@@ -7487,6 +7535,8 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
             gossipTextId = GOSSIP_GREET_CUSTOM_DARKRANGER;
         else if (_botclass == BOT_CLASS_SEA_WITCH)
             gossipTextId = GOSSIP_GREET_CUSTOM_SEAWITCH;
+        else if (_botclass == BOT_CLASS_CRYPT_LORD)
+            gossipTextId = GOSSIP_GREET_CUSTOM_CRYPTLORD;
         else
             gossipTextId = GOSSIP_GREET_NEED_SMTH;
     }
@@ -8181,6 +8231,8 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
 
             //general
             AddGossipItemFor(player, GOSSIP_ICON_CHAT, LocalizedNpcText(player, BOT_TEXT_SHOW_INVENTORY), GOSSIP_SENDER_EQUIPMENT_LIST, GOSSIP_ACTION_INFO_DEF + 1);
+            if (BotMgr::IsGearBankEnabled())
+                AddGossipItemFor(player, GOSSIP_ICON_TALK, LocalizedNpcText(player, BOT_TEXT_BOT_GEAR_BANK), GOSSIP_SENDER_EQUIPMENT_BANK_MENU, GOSSIP_ACTION_INFO_DEF + 1);
 
             //auto-equip
             AddGossipItemFor(player, GOSSIP_ICON_TALK, LocalizedNpcText(player, BOT_TEXT_AUTOEQUIP) + "...", GOSSIP_SENDER_EQUIP_AUTOEQUIP, GOSSIP_ACTION_INFO_DEF + 1);
@@ -8242,6 +8294,10 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
                     msg << " |cffe6cc80|h[!" << LocalizedNpcText(player, BOT_TEXT_VISUALONLY) << "!]|h|r";
                 BotWhisper(msg.str(), player);
             }
+
+            std::ostringstream msg2;
+            msg2 << "GS: " << uint32(GetBotGearScores().first);
+            BotWhisper(msg2.str(), player);
 
             break;
         }
@@ -8465,6 +8521,8 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
             if (slot <= BOT_SLOT_RANGED && einfo->ItemEntry[slot] == item->GetEntry())
                 msg << " |cffe6cc80|h[!" << LocalizedNpcText(player, BOT_TEXT_VISUALONLY) << "!]|h|r";
 
+            msg << " GS: " << uint32(CalculateItemGearScore(me->GetEntry(), me->GetLevel(), GetBotClass(), GetSpec(), slot, item->GetTemplate()));
+
             BotWhisper(msg.str(), player);
 
             //break; //no break here - return to menu
@@ -8552,6 +8610,8 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
                 if (visual_only)
                     str << " |cffe6cc80|h[!" << LocalizedNpcText(player, BOT_TEXT_VISUALONLY) << "!]|h|r";
 
+                str << " GS: " << uint32(CalculateItemGearScore(me->GetEntry(), me->GetLevel(), GetBotClass(), GetSpec(), slot, item->GetTemplate()));
+
                 AddGossipItemFor(player, GOSSIP_ICON_CHAT, str.str().c_str(), GOSSIP_SENDER_EQUIPMENT_INFO, action);
 
                 if (!visual_only && BotMgr::DisplayEquipment() && BotMgr::IsTransmogEnabled() && slot < BOT_TRANSMOG_INVENTORY_SIZE && CanDisplayNonWeaponEquipmentChanges())
@@ -8600,6 +8660,7 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
                         {
                             std::ostringstream name;
                             _AddItemLink(player, item, name);
+                            name << " GS: " << uint32(CalculateItemGearScore(me->GetEntry(), me->GetLevel(), GetBotClass(), GetSpec(), slot, item->GetTemplate()));
                             if (BotMgr::SendEquipListItems())
                                 BotWhisper(name.str(), player);
                             AddGossipItemFor(player, GOSSIP_ICON_CHAT, name.str().c_str(), GOSSIP_SENDER_EQUIP + slot, GOSSIP_ACTION_INFO_DEF + item->GetGUID().GetCounter());
@@ -8623,6 +8684,7 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
                                 {
                                     std::ostringstream name;
                                     _AddItemLink(player, item, name);
+                                    name << " GS: " << uint32(CalculateItemGearScore(me->GetEntry(), me->GetLevel(), GetBotClass(), GetSpec(), slot, item->GetTemplate()));
                                     if (BotMgr::SendEquipListItems())
                                         BotWhisper(name.str(), player);
                                     AddGossipItemFor(player, GOSSIP_ICON_CHAT, name.str().c_str(), GOSSIP_SENDER_EQUIP + slot, GOSSIP_ACTION_INFO_DEF + item->GetGUID().GetCounter());
@@ -8985,6 +9047,186 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
 
             if (found && _equip(sender - GOSSIP_SENDER_EQUIP, item, player->GetGUID())){}
             return OnGossipSelect(player, creature, GOSSIP_SENDER_EQUIPMENT, GOSSIP_ACTION_INFO_DEF + 1);
+        }
+        case GOSSIP_SENDER_EQUIPMENT_BANK_DEPOSIT_ITEM:
+        {
+            ObjectGuid::LowType itemGuidLow = action - GOSSIP_ACTION_INFO_DEF;
+            Item* item = player->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(itemGuidLow));
+            if (!item)
+            {
+                LOG_ERROR("npcbots", "GOSSIP_SENDER_EQUIPMENT_BANK_DEPOSIT_ITEM: item {} not found on player {}! Cheater?",
+                    itemGuidLow, player->GetName().c_str());
+                break;
+            }
+
+            BotDataMgr::DepositBotBankItem(player->GetGUID(), item);
+            player->MoveItemFromInventory(item->GetBagSlot(), item->GetSlot(), true);
+
+            action = GOSSIP_ACTION_INFO_DEF; //return to page 0
+            //break;
+            [[fallthrough]];
+        }
+        case GOSSIP_SENDER_EQUIPMENT_BANK_DEPOSIT:
+        {
+            subMenu = true;
+            uint32 page = action - GOSSIP_ACTION_INFO_DEF;
+            uint32 items_per_page = BOT_GOSSIP_MAX_ITEMS - 3; // prev page, back, next page
+            uint32 counter = 0;
+            uint32 can_add_count = 0;
+            uint32 k = 0;
+
+            static const auto is_bot_equippable_item = [](ItemTemplate const* proto) {
+                switch (proto->InventoryType)
+                {
+                    case INVTYPE_NON_EQUIP: case INVTYPE_BAG: case INVTYPE_TABARD: case INVTYPE_AMMO: case INVTYPE_QUIVER:
+                        return false;
+                    default:
+                        return true;
+                }
+            };
+
+            //backpack
+            for (uint8 i = INVENTORY_SLOT_ITEM_START; i != INVENTORY_SLOT_ITEM_END && can_add_count <= items_per_page; ++i)
+            {
+                if (Item const* pItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
+                {
+                    if (is_bot_equippable_item(pItem->GetTemplate()))
+                    {
+                        ++k;
+                        if (k <= page * items_per_page)
+                            continue;
+                        ++can_add_count;
+                        if (counter >= items_per_page)
+                            continue;
+                        ++counter;
+                        std::ostringstream name;
+                        _AddItemLink(player, pItem, name);
+                        AddGossipItemFor(player, GOSSIP_ICON_CHAT, name.str(), GOSSIP_SENDER_EQUIPMENT_BANK_DEPOSIT_ITEM, GOSSIP_ACTION_INFO_DEF + pItem->GetGUID().GetCounter());
+                    }
+                }
+            }
+
+            //other bags
+            for (uint8 i = INVENTORY_SLOT_BAG_START; i != INVENTORY_SLOT_BAG_END && can_add_count <= items_per_page; ++i)
+            {
+                Bag const* pBag = player->GetBagByPos(i);
+                if (!pBag)
+                    continue;
+                for (uint32 j = 0; j != pBag->GetBagSize() && can_add_count <= items_per_page; ++j)
+                {
+                    Item const* pItem = player->GetItemByPos(i, j);
+                    if (!pItem)
+                        continue;
+                    if (is_bot_equippable_item(pItem->GetTemplate()))
+                    {
+                        ++k;
+                        if (k <= page * items_per_page)
+                            continue;
+                        ++can_add_count;
+                        if (counter >= items_per_page)
+                            continue;
+                        ++counter;
+                        std::ostringstream name;
+                        _AddItemLink(player, pItem, name);
+                        AddGossipItemFor(player, GOSSIP_ICON_CHAT, name.str(), GOSSIP_SENDER_EQUIPMENT_BANK_DEPOSIT_ITEM, GOSSIP_ACTION_INFO_DEF + pItem->GetGUID().GetCounter());
+                    }
+                }
+            }
+
+            if (page > 0)
+                AddGossipItemFor(player, GOSSIP_ICON_TALK, LocalizedNpcText(player, BOT_TEXT_PREVIOUS_PAGE), GOSSIP_SENDER_EQUIPMENT_BANK_DEPOSIT, action - 1);
+            if (can_add_count > items_per_page)
+                AddGossipItemFor(player, GOSSIP_ICON_TALK, LocalizedNpcText(player, BOT_TEXT_NEXT_PAGE), GOSSIP_SENDER_EQUIPMENT_BANK_DEPOSIT, action + 1);
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, LocalizedNpcText(player, BOT_TEXT_BACK), GOSSIP_SENDER_EQUIPMENT_BANK_MENU, GOSSIP_ACTION_INFO_DEF + 1);
+            break;
+        }
+        case GOSSIP_SENDER_EQUIPMENT_BANK_WITHDRAW_ITEM:
+        {
+            ObjectGuid::LowType itemGuidLow = action - GOSSIP_ACTION_INFO_DEF;
+
+            //BotBankItemContainer const& botBankItems = BotDataMgr::GetBotBankItems(player->GetGUID());
+            //Item const* item = std::find_if(std::cbegin(botBankItems), std::cend(botBankItems), [guidLow = itemGuidLow](Item const* item) {
+            //    return item->GetGUID().GetCounter() == guidLow;
+            //});
+            Item* item = BotDataMgr::WithdrawBotBankItem(player->GetGUID(), itemGuidLow);
+            if (!item)
+            {
+                LOG_ERROR("npcbots", "GOSSIP_SENDER_EQUIPMENT_BANK_WITHDRAW_ITEM: item {} not found on player {}! Cheater?",
+                    itemGuidLow, player->GetName().c_str());
+                break;
+            }
+
+            ItemPosCountVec dest;
+            uint32 no_space = 0;
+            InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->GetEntry(), 1, &no_space);
+            if (msg != EQUIP_ERR_OK)
+            {
+                std::ostringstream istr;
+                _AddItemLink(player, item, istr, false);
+                ChatHandler ch(player->GetSession());
+                ch.PSendSysMessage(LocalizedNpcText(player, BOT_TEXT_CANT_UNEQUIP_MAILING).c_str(), istr.str().c_str());
+
+                item->SetOwnerGUID(player->GetGUID());
+
+                CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+                item->FSetState(ITEM_CHANGED);
+                item->SaveToDB(trans);
+                MailDraft(istr.str(), "").AddItem(item).SendMailTo(trans, MailReceiver(player), MailSender(me));
+                CharacterDatabase.CommitTransaction(trans);
+
+                player->SendEquipError(msg, nullptr, nullptr, item->GetEntry());
+            }
+            else
+            {
+                Item* pItem = player->StoreItem(dest, item, true);
+                player->SendNewItem(pItem, 1, true, false, false);
+            }
+
+            action = GOSSIP_ACTION_INFO_DEF; //return to page 0
+            //break;
+            [[fallthrough]];
+        }
+        case GOSSIP_SENDER_EQUIPMENT_BANK_WITHDRAW:
+        {
+            uint32 page = action - GOSSIP_ACTION_INFO_DEF;
+            uint32 items_per_page = BOT_GOSSIP_MAX_ITEMS - 3; // page prev, page next, back
+            uint32 counter = 0;
+
+            BotBankItemContainer const* botBankItems = BotDataMgr::GetBotBankItems(player->GetGUID());
+            if (!botBankItems || botBankItems->empty())
+            {
+                BotWhisper(LocalizedNpcText(player, BOT_TEXT_BANK_IS_EMPTY), player);
+                return OnGossipSelect(player, me, GOSSIP_SENDER_EQUIPMENT_BANK_MENU, action);
+                break;
+            }
+
+            subMenu = true;
+
+            for (size_t i = page * items_per_page; i < botBankItems->size() && counter < items_per_page; ++i)
+            {
+                Item const* item = botBankItems->at(i);
+                ++counter;
+                std::ostringstream name;
+                _AddItemLink(player, item, name);
+                AddGossipItemFor(player, GOSSIP_ICON_CHAT, name.str(), GOSSIP_SENDER_EQUIPMENT_BANK_WITHDRAW_ITEM, GOSSIP_ACTION_INFO_DEF + item->GetGUID().GetCounter());
+            }
+
+            if (page > 0)
+                AddGossipItemFor(player, GOSSIP_ICON_TALK, LocalizedNpcText(player, BOT_TEXT_PREVIOUS_PAGE), GOSSIP_SENDER_EQUIPMENT_BANK_WITHDRAW, action - 1);
+            if (botBankItems->size() > (page + 1) * items_per_page)
+                AddGossipItemFor(player, GOSSIP_ICON_TALK, LocalizedNpcText(player, BOT_TEXT_NEXT_PAGE), GOSSIP_SENDER_EQUIPMENT_BANK_WITHDRAW, action + 1);
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, LocalizedNpcText(player, BOT_TEXT_BACK), GOSSIP_SENDER_EQUIPMENT_BANK_MENU, GOSSIP_ACTION_INFO_DEF + 1);
+            break;
+        }
+        case GOSSIP_SENDER_EQUIPMENT_BANK_MENU:
+        {
+            subMenu = true;
+
+            AddGossipItemFor(player, GOSSIP_ICON_TALK, LocalizedNpcText(player, BOT_TEXT_DEPOSIT_ITEMS), GOSSIP_SENDER_EQUIPMENT_BANK_DEPOSIT, GOSSIP_ACTION_INFO_DEF + 0);
+            AddGossipItemFor(player, GOSSIP_ICON_TALK, LocalizedNpcText(player, BOT_TEXT_WITHDRAW_ITEMS), GOSSIP_SENDER_EQUIPMENT_BANK_WITHDRAW, GOSSIP_ACTION_INFO_DEF + 0);
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, LocalizedNpcText(player, BOT_TEXT_BACK), 1, GOSSIP_ACTION_INFO_DEF + 1);
+
+            break;
         }
         case GOSSIP_SENDER_ROLES_MAIN_TOGGLE: //ROLES 2: set/unset
         {
@@ -10133,6 +10375,9 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
                 case BOT_CLASS_SEA_WITCH:
                     gossipTextId = GOSSIP_CLASSDESC_SEAWITCH;
                     break;
+                case BOT_CLASS_CRYPT_LORD:
+                    gossipTextId = GOSSIP_CLASSDESC_CRYPTLORD;
+                    break;
                 default:
                     break;
             }
@@ -10179,6 +10424,8 @@ bool bot_ai::OnGossipSelectCode(Player* player, Creature* creature/* == me*/, ui
             gossipTextId = GOSSIP_NORMAL_CUSTOM_DARKRANGER;
         else if (_botclass == BOT_CLASS_SEA_WITCH)
             gossipTextId = GOSSIP_NORMAL_CUSTOM_SEAWITCH;
+        else if (_botclass == BOT_CLASS_CRYPT_LORD)
+            gossipTextId = GOSSIP_NORMAL_CUSTOM_CRYPTLORD;
         else
             gossipTextId = GOSSIP_NORMAL_SERVE_MASTER;
     }
@@ -10192,6 +10439,8 @@ bool bot_ai::OnGossipSelectCode(Player* player, Creature* creature/* == me*/, ui
             gossipTextId = GOSSIP_GREET_CUSTOM_DARKRANGER;
         else if (_botclass == BOT_CLASS_SEA_WITCH)
             gossipTextId = GOSSIP_GREET_CUSTOM_SEAWITCH;
+        else if (_botclass == BOT_CLASS_CRYPT_LORD)
+            gossipTextId = GOSSIP_GREET_CUSTOM_CRYPTLORD;
         else
             gossipTextId = GOSSIP_GREET_NEED_SMTH;
     }
@@ -10998,8 +11247,8 @@ bool bot_ai::_canUseOffHand() const
     //sphynx can grab anything
     if (_botclass == BOT_CLASS_SPHYNX)
         return true;
-    //dreadlord can on only equip in main hand
-    if (_botclass == BOT_CLASS_DREADLORD)
+    //dreadlord / cryptlord can on only equip in main hand
+    if (_botclass == BOT_CLASS_DREADLORD || _botclass == BOT_CLASS_CRYPT_LORD)
         return false;
     //staff-only classes
     if (_botclass == BOT_CLASS_ARCHMAGE || _botclass == BOT_CLASS_NECROMANCER)
@@ -11055,7 +11304,7 @@ bool bot_ai::_canEquip(ItemTemplate const* newProto, uint8 slot, bool ignoreItem
         if (!ignoreItemLevel)
             if (slot > BOT_SLOT_RANGED || einfo->ItemEntry[slot] != oldProto->ItemId)
                 if (IAmFree() || !master->IsGameMaster())
-                    if (_getItemGearScore(oldProto, slot, oldItem) > _getItemGearScore(newProto, slot, newItem))
+                    if (_getItemGearStatScore(oldProto, slot, oldItem) > _getItemGearStatScore(newProto, slot, newItem))
                         return false;
     }
 
@@ -11355,6 +11604,7 @@ bool bot_ai::_canEquip(ItemTemplate const* newProto, uint8 slot, bool ignoreItem
                 }
                 break;
             case BOT_CLASS_DREADLORD:
+            case BOT_CLASS_CRYPT_LORD:
                 switch (newProto->SubClass)
                 {
                     case ITEM_SUBCLASS_WEAPON_AXE:
@@ -11548,6 +11798,7 @@ bool bot_ai::_canEquip(ItemTemplate const* newProto, uint8 slot, bool ignoreItem
                     case BOT_CLASS_SPHYNX:
                     case BOT_CLASS_DREADLORD:
                     case BOT_CLASS_SPELLBREAKER:
+                    case BOT_CLASS_CRYPT_LORD:
                         break;
                     case BOT_CLASS_WARRIOR:
                     case BOT_CLASS_PALADIN:
@@ -11565,6 +11816,7 @@ bool bot_ai::_canEquip(ItemTemplate const* newProto, uint8 slot, bool ignoreItem
                     case BOT_CLASS_BM:
                     case BOT_CLASS_SPHYNX:
                     case BOT_CLASS_SPELLBREAKER:
+                    case BOT_CLASS_CRYPT_LORD:
                         break;
                     case BOT_CLASS_WARRIOR:
                     case BOT_CLASS_PALADIN:
@@ -11604,6 +11856,7 @@ bool bot_ai::_canEquip(ItemTemplate const* newProto, uint8 slot, bool ignoreItem
                         return false;
                     case BOT_CLASS_DREADLORD:
                     case BOT_CLASS_SPELLBREAKER:
+                    case BOT_CLASS_CRYPT_LORD:
                         if (newProto->InventoryType != INVTYPE_CLOAK)
                             return false;
                         break;
@@ -12003,9 +12256,15 @@ void bot_ai::ApplyItemBonuses(uint8 slot)
     {
         if (ssv)
         {
-            float average = ssv->getDPSMod(proto->ScalingStatValue) * proto->Delay / 1000.0f;
-            _stats[slot][BOT_STAT_MOD_DAMAGE_MIN] += 0.7f * average;
-            _stats[slot][BOT_STAT_MOD_DAMAGE_MIN] += 1.3f * average;
+            int32 extraDPS = ssv->getDPSMod(proto->ScalingStatValue);
+            if (extraDPS)
+            {
+                float average = extraDPS * proto->Delay / 1000.0f;
+                float mod = ssv->IsTwoHand(proto->ScalingStatValue) ? 0.2f : 0.3f;
+
+                _stats[slot][BOT_STAT_MOD_DAMAGE_MIN] += (1.0f - mod) * average;
+                _stats[slot][BOT_STAT_MOD_DAMAGE_MAX] += (1.0f + mod) * average;
+            }
         }
         else
         {
@@ -12873,7 +13132,7 @@ float bot_ai::_getStatScore(uint8 stat) const
     }
 }
 
-float bot_ai::_getItemGearScore(ItemTemplate const* iproto, uint8 forslot, Item const* item) const
+float bot_ai::_getItemGearStatScore(ItemTemplate const* iproto, uint8 forslot, Item const* item) const
 {
     ItemTemplate const* proto = item ? sObjectMgr->GetItemTemplate(item->GetEntry()) : iproto;
     if (!proto)
@@ -12933,9 +13192,15 @@ float bot_ai::_getItemGearScore(ItemTemplate const* iproto, uint8 forslot, Item 
     {
         if (ssv)
         {
-            float average = ssv->getDPSMod(proto->ScalingStatValue) * proto->Delay / 1000.0f;
-            istats[BOT_STAT_MOD_DAMAGE_MIN] += 0.7f * average;
-            istats[BOT_STAT_MOD_DAMAGE_MIN] += 1.3f * average;
+            int32 extraDPS = ssv->getDPSMod(proto->ScalingStatValue);
+            if (extraDPS)
+            {
+                float average = extraDPS * proto->Delay / 1000.0f;
+                float mod = ssv->IsTwoHand(proto->ScalingStatValue) ? 0.2f : 0.3f;
+
+                istats[BOT_STAT_MOD_DAMAGE_MIN] += (1.0f - mod) * average;
+                istats[BOT_STAT_MOD_DAMAGE_MAX] += (1.0f + mod) * average;
+            }
         }
         else
         {
@@ -13077,6 +13342,9 @@ float bot_ai::_getItemGearScore(ItemTemplate const* iproto, uint8 forslot, Item 
 
     for (uint8 i = 0; i != MAX_BOT_ITEM_MOD; ++i)
         itemScore += istats[i] * _getStatScore(i);
+
+    float itemGearScore = CalculateItemGearScore(me->GetEntry(), me->GetLevel(), GetBotClass(), GetSpec(), forslot, iproto);
+    itemScore += itemGearScore;
 
     //TC_LOG_ERROR("scripts", "_getItemGearScore total score %.3f", itemScore);
     return itemScore;
@@ -13260,6 +13528,10 @@ float bot_ai::GetAverageItemLevel() const
 
     return !count ? 0.f : (sum / float(count));
 }
+std::pair<float, float> bot_ai::GetBotGearScores() const
+{
+    return CalculateBotGearScore(me->GetEntry(), me->GetLevel(), GetBotClass(), GetSpec(), _equips);
+}
 /////////
 //ROLES//
 /////////
@@ -13428,14 +13700,12 @@ void bot_ai::DefaultInit()
 
     //bot needs to be either directly controlled by player of have pvp flag to be a valid assist target (buffs, heals, etc.)
     me->SetUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED);
-    if (!IsWanderer() || sWorld->IsFFAPvPRealm())
-    {
-        me->SetPvP(master->IsPvP());
-        if (sWorld->IsFFAPvPRealm())
-            me->SetByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP);
-        else if (IAmFree())
-            me->SetByteFlag(UNIT_FIELD_BYTES_2, 1, 0);
-    }
+
+    me->SetPvP(master->IsPvP() || IsWanderer());
+    if (sWorld->IsFFAPvPRealm())
+        me->SetByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP);
+    else if (IAmFree())
+        me->SetByteFlag(UNIT_FIELD_BYTES_2, 1, 0);
 
     InitSpec();
     InitRoles();
@@ -13866,6 +14136,7 @@ bool bot_ai::IsValidSpecForClass(uint8 m_class, uint8 spec)
         case BOT_CLASS_DARK_RANGER:
         case BOT_CLASS_NECROMANCER:
         case BOT_CLASS_SEA_WITCH:
+        case BOT_CLASS_CRYPT_LORD:
             return spec == BOT_SPEC_DEFAULT;
         default:
             break;
@@ -14045,7 +14316,7 @@ void bot_ai::InitEquips()
         //  "FROM item_instance WHERE guid IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", CONNECTION_SYNCH
 
         for (uint8 i = 0; i != BOT_INVENTORY_SIZE; ++i)
-        	stmt->SetData(i, npcBotData->equips[i]);
+            stmt->SetData(i, npcBotData->equips[i]);
 
         PreparedQueryResult iiresult = CharacterDatabase.Query(stmt);
 
@@ -14970,6 +15241,11 @@ void bot_ai::OnBotOwnerSpellGo(Spell const* spell, bool ok)
             vehspell->prepare(&targets);
         }
     }
+}
+
+void bot_ai::OnBotChannelFinish(Spell const* spell)
+{
+    OnClassChannelFinish(spell);
 }
 
 void bot_ai::OnBotSpellInterrupted(SpellSchoolMask schoolMask, uint32 unTimeMs)
@@ -16237,6 +16513,8 @@ bool bot_ai::GlobalUpdate(uint32 diff)
 
     ReduceCD(diff);
 
+    UpdateContestedPvP();
+
     if (IsDuringTeleport())
         return false;
 
@@ -16728,12 +17006,6 @@ bool bot_ai::GlobalUpdate(uint32 diff)
     if (!IsTempBot())
         _updateRations(); //safe
 
-    CheckAttackState();
-
-    //second alive check - CheckAttackState() can cause bot to die
-    if (!me->IsAlive())
-        return false;
-
     if (checkAurasTimer <= lastdiff)
     {
         checkAurasTimer += uint32(__rand + __rand + (IAmFree() ? 1000 : 40 * (1 + master->GetNpcBotsCount())));
@@ -16878,7 +17150,7 @@ bool bot_ai::GlobalUpdate(uint32 diff)
             else
             {
                 //classes which don't display weapons
-                if (_botclass == BOT_CLASS_DREADLORD || _botclass == BOT_CLASS_SPELLBREAKER)
+                if (_botclass == BOT_CLASS_DREADLORD || _botclass == BOT_CLASS_SPELLBREAKER || _botclass == BOT_CLASS_CRYPT_LORD)
                 {
                     if (me->GetSheath() != SHEATH_STATE_UNARMED)
                         me->SetSheath(SHEATH_STATE_UNARMED);
@@ -16942,6 +17214,8 @@ void bot_ai::CommonTimers(uint32 diff)
                 outdoorsTimer = 0;
         }
     }
+
+    if (_contestedPvPTimer > diff)  _contestedPvPTimer -= diff;
 
     if (_updateTimerMedium > diff)  _updateTimerMedium -= diff;
     if (_updateTimerEx1 > diff)     _updateTimerEx1 -= diff;
@@ -17111,6 +17385,9 @@ void bot_ai::Evade()
                     _evadeCount = 100;
                     return;
                 }
+
+                //if (TempSummon* wpc = me->GetMap()->SummonCreature(VISUAL_WAYPOINT, pos, nullptr, 20000))
+                //    wpc->SetTempSummonType(TEMPSUMMON_TIMED_DESPAWN);
 
                 movepos.Relocate(me);
                 BotMovement(BOT_MOVE_POINT, &pos, nullptr, use_path);
@@ -17396,8 +17673,8 @@ void bot_ai::GetHomePosition(uint16& mapid, Position* pos) const
     else
     {
         CreatureData const* data = me->GetCreatureData();
-    	mapid = data->mapid;
-    	pos->Relocate(data->posX, data->posY, data->posZ, data->orientation);
+        mapid = data->mapid;
+        pos->Relocate(data->posX, data->posY, data->posZ, data->orientation);
     }
 }
 
@@ -18161,6 +18438,8 @@ uint8 bot_ai::GetPlayerClass() const
                 return BOT_CLASS_WARLOCK;
             case BOT_CLASS_SEA_WITCH:
                 return BOT_CLASS_MAGE;
+            case BOT_CLASS_CRYPT_LORD:
+                return BOT_CLASS_WARRIOR;
             default:
                 LOG_ERROR("entities.unit", "GetPlayerClass: {} has unknown Ex bot class {}!", me->GetName().c_str(), _botclass);
                 return BOT_CLASS_PALADIN;
@@ -18191,6 +18470,8 @@ uint8 bot_ai::GetPlayerRace() const
                 return RACE_HUMAN;
             case BOT_CLASS_SEA_WITCH:
                 return RACE_TROLL;
+            case BOT_CLASS_CRYPT_LORD:
+                return RACE_UNDEAD_PLAYER;
             default:
                 LOG_ERROR("entities.unit", "GetPlayerRace: {} has unknown Ex bot class {}!", me->GetName().c_str(), _botclass);
                 return RACE_HUMAN;
@@ -18267,12 +18548,13 @@ bool bot_ai::IsMeleeClass(uint8 m_class)
     return
         (m_class == CLASS_WARRIOR || m_class == CLASS_ROGUE || m_class == CLASS_PALADIN ||
         m_class == CLASS_DEATH_KNIGHT || m_class == BOT_CLASS_BM || m_class == BOT_CLASS_DREADLORD ||
-        m_class == BOT_CLASS_SPELLBREAKER);
+        m_class == BOT_CLASS_SPELLBREAKER || m_class == BOT_CLASS_CRYPT_LORD);
 }
 bool bot_ai::IsTankingClass(uint8 m_class)
 {
     return (m_class == CLASS_WARRIOR || m_class == CLASS_PALADIN ||
-        m_class == CLASS_DEATH_KNIGHT || m_class == BOT_CLASS_SPHYNX || m_class == BOT_CLASS_SPELLBREAKER);
+        m_class == CLASS_DEATH_KNIGHT || m_class == BOT_CLASS_SPHYNX ||
+        m_class == BOT_CLASS_SPELLBREAKER || m_class == BOT_CLASS_CRYPT_LORD);
 }
 bool bot_ai::IsBlockingClass(uint8 m_class)
 {
@@ -18302,7 +18584,7 @@ bool bot_ai::IsHumanoidClass(uint8 m_class)
 bool bot_ai::IsHeroExClass(uint8 m_class)
 {
     return m_class == BOT_CLASS_BM || m_class == BOT_CLASS_ARCHMAGE || m_class == BOT_CLASS_DREADLORD ||
-        m_class == BOT_CLASS_DARK_RANGER || m_class == BOT_CLASS_SEA_WITCH;
+        m_class == BOT_CLASS_DARK_RANGER || m_class == BOT_CLASS_SEA_WITCH || m_class == BOT_CLASS_CRYPT_LORD;
 }
 bool bot_ai::IsMelee() const
 {
@@ -18427,7 +18709,7 @@ bool bot_ai::CanChangeEquip(uint8 slot) const
     return (_botclass != BOT_CLASS_BM && _botclass != BOT_CLASS_ARCHMAGE &&
         _botclass != BOT_CLASS_DREADLORD && _botclass != BOT_CLASS_SPELLBREAKER &&
         _botclass != BOT_CLASS_DARK_RANGER && _botclass != BOT_CLASS_NECROMANCER &&
-        _botclass != BOT_CLASS_SEA_WITCH) ||
+        _botclass != BOT_CLASS_SEA_WITCH && _botclass != BOT_CLASS_CRYPT_LORD) ||
         slot > BOT_SLOT_RANGED;
 }
 bool bot_ai::CanDisplayNonWeaponEquipmentChanges() const
@@ -18551,6 +18833,42 @@ bool bot_ai::IsDamagingSpell(SpellInfo const* spellInfo)
 bool bot_ai::IsImmunedToMySpellEffect(Unit const* unit, SpellInfo const* spellInfo, SpellEffIndex index) const
 {
     return unit->IsImmunedToSpellEffect(spellInfo, index);
+}
+
+//CONTESTED PVP
+bool bot_ai::IsContestedPvP() const
+{
+    return me->HasUnitState(UNIT_STATE_ATTACK_PLAYER);
+}
+void bot_ai::SetContestedPvP()
+{
+    ASSERT(IAmFree());
+
+    _contestedPvPTimer = 30000;
+    if (!me->HasUnitState(UNIT_STATE_ATTACK_PLAYER))
+    {
+        me->AddUnitState(UNIT_STATE_ATTACK_PLAYER);
+        Acore::AIRelocationNotifier notifier(*me);
+        Cell::VisitWorldObjects(me, notifier, me->GetVisibilityRange());
+    }
+    if (botPet && !botPet->HasUnitState(UNIT_STATE_ATTACK_PLAYER))
+    {
+        botPet->AddUnitState(UNIT_STATE_ATTACK_PLAYER);
+        Acore::AIRelocationNotifier notifier(*botPet);
+        Cell::VisitWorldObjects(me, notifier, me->GetVisibilityRange());
+    }
+}
+void bot_ai::ResetContestedPvP()
+{
+    _contestedPvPTimer = 0;
+    me->ClearUnitState(UNIT_STATE_ATTACK_PLAYER);
+    if (botPet && botPet->HasUnitState(UNIT_STATE_ATTACK_PLAYER))
+        botPet->ClearUnitState(UNIT_STATE_ATTACK_PLAYER);
+}
+void bot_ai::UpdateContestedPvP()
+{
+    if (_contestedPvPTimer > 0 && _contestedPvPTimer <= lastdiff && !me->IsInCombat())
+        ResetContestedPvP();
 }
 
 //BATTLEGROUNDS

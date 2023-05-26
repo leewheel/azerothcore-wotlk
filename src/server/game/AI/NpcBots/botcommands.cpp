@@ -3282,16 +3282,12 @@ public:
         handler->PSendSysMessage("拥有 NPCBots: %u (已激活: %u)", uint32(guidvec.size()) + map_size, map_size);
         if (map)
         {
-            for (uint8 i = BOT_CLASS_WARRIOR; i != BOT_CLASS_END; ++i)
-            {
+            for (uint8 i = BOT_CLASS_WARRIOR; i != BOT_CLASS_END; ++i) {
                 uint8 count = 0;
                 uint8 alivecount = 0;
-                for (BotMap::const_iterator itr = map->begin(); itr != map->end(); ++itr)
-                {
-                    if (Creature* cre = itr->second)
-                    {
-                        if (cre->GetBotClass() == i)
-                        {
+                for (BotMap::const_iterator itr = map->begin(); itr != map->end(); ++itr) {
+                    if (Creature *cre = itr->second) {
+                        if (cre->GetBotClass() == i) {
                             ++count;
                             if (cre->IsAlive())
                                 ++alivecount;
@@ -3301,31 +3297,31 @@ public:
                 if (count == 0)
                     continue;
 
-            char const* bclass;
-            switch (i)
-            {
-                case BOT_CLASS_WARRIOR:         bclass = "战士";             break;
-                case BOT_CLASS_PALADIN:         bclass = "圣骑士";           break;
-                case BOT_CLASS_MAGE:            bclass = "法师";             break;
-                case BOT_CLASS_PRIEST:          bclass = "牧师";             break;
-                case BOT_CLASS_WARLOCK:         bclass = "术士";             break;
-                case BOT_CLASS_DRUID:           bclass = "德鲁伊";           break;
-                case BOT_CLASS_DEATH_KNIGHT:    bclass = "死亡骑士";         break;
-                case BOT_CLASS_ROGUE:           bclass = "潜行者";           break;
-                case BOT_CLASS_SHAMAN:          bclass = "萨满祭司";         break;
-                case BOT_CLASS_HUNTER:          bclass = "猎人";             break;
-                case BOT_CLASS_BM:              bclass = "剑圣";             break;
-                case BOT_CLASS_SPHYNX:          bclass = "毁灭者";           break;
-                case BOT_CLASS_ARCHMAGE:        bclass = "大法师";           break;
-                case BOT_CLASS_DREADLORD:       bclass = "恐惧魔王";         break;
-                case BOT_CLASS_SPELLBREAKER:    bclass = "破法者";           break;
-                case BOT_CLASS_DARK_RANGER:     bclass = "黑暗游侠";         break;
-                case BOT_CLASS_NECROMANCER:     bclass = "死灵法师";         break;
-                case BOT_CLASS_SEA_WITCH:       bclass = "海妖";             break;
-                case BOT_CLASS_CRYPT_LORD:      bclass = "地穴领主";         break;
-                default:                        bclass = "未知职业";         break;
+                char const* bclass;
+                switch (i)
+                {
+                    case BOT_CLASS_WARRIOR:         bclass = "战士";             break;
+                    case BOT_CLASS_PALADIN:         bclass = "圣骑士";           break;
+                    case BOT_CLASS_MAGE:            bclass = "法师";             break;
+                    case BOT_CLASS_PRIEST:          bclass = "牧师";             break;
+                    case BOT_CLASS_WARLOCK:         bclass = "术士";             break;
+                    case BOT_CLASS_DRUID:           bclass = "德鲁伊";           break;
+                    case BOT_CLASS_DEATH_KNIGHT:    bclass = "死亡骑士";         break;
+                    case BOT_CLASS_ROGUE:           bclass = "潜行者";           break;
+                    case BOT_CLASS_SHAMAN:          bclass = "萨满祭司";         break;
+                    case BOT_CLASS_HUNTER:          bclass = "猎人";             break;
+                    case BOT_CLASS_BM:              bclass = "剑圣";             break;
+                    case BOT_CLASS_SPHYNX:          bclass = "毁灭者";           break;
+                    case BOT_CLASS_ARCHMAGE:        bclass = "大法师";           break;
+                    case BOT_CLASS_DREADLORD:       bclass = "恐惧魔王";         break;
+                    case BOT_CLASS_SPELLBREAKER:    bclass = "破法者";           break;
+                    case BOT_CLASS_DARK_RANGER:     bclass = "黑暗游侠";         break;
+                    case BOT_CLASS_NECROMANCER:     bclass = "死灵法师";         break;
+                    case BOT_CLASS_SEA_WITCH:       bclass = "海妖";             break;
+                    case BOT_CLASS_CRYPT_LORD:      bclass = "地穴领主";         break;
+                    default:                        bclass = "未知职业";         break;
+                }
                 handler->PSendSysMessage("%s: %u (存活: %u)", bclass, count, alivecount);
-                
             }
         }
 

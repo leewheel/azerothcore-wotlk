@@ -17,6 +17,7 @@ class Unit;
 class Vehicle;
 class WorldLocation;
 class WorldObject;
+class WorldPacket;
 
 class DPSTracker;
 
@@ -25,10 +26,12 @@ struct CleanDamage;
 struct GroupQueueInfo;
 struct Position;
 
+enum BattlegroundTypeId : uint8;
 enum CurrentSpellTypes : uint8;
 enum DamageEffectType : uint8;
 
 constexpr size_t TargetIconNamesCacheSize = 8u; // Group.h TARGETICONCOUNT
+constexpr size_t BracketsCount = DEFAULT_MAX_LEVEL / 10 + 1; //0-9, 10-19, 20-29, 30-39, 40-49, 50-59, 60-69, 70-79, 80-83
 
 enum BotAddResult
 {
@@ -69,6 +72,7 @@ enum BotAttackAngle
 };
 
 typedef std::unordered_map<ObjectGuid /*guid*/, Creature* /*bot*/> BotMap;
+typedef std::array<uint32, BracketsCount> BotBrackets;
 
 class AC_GAME_API BotMgr
 {
@@ -117,6 +121,7 @@ class AC_GAME_API BotMgr
         static uint32 GetBaseUpdateDelay();
         static uint32 GetOwnershipExpireTime();
         static uint32 GetDesiredWanderingBotsCount();
+        static uint32 GetBGTargetTeamPlayersCount(BattlegroundTypeId bgTypeId);
         static float GetBotHKHonorRate();
         static float GetBotStatLimitDodge();
         static float GetBotStatLimitParry();
@@ -130,6 +135,7 @@ class AC_GAME_API BotMgr
         static float GetBotWandererHealingMod();
         static float GetBotWandererHPMod();
         static float GetBotWandererSpeedMod();
+        static BotBrackets GetBotWandererLevelBrackets();
         static float GetBotDamageModByClass(uint8 botclass);
         static float GetBotDamageModByLevel(uint8 botlevel);
 
@@ -193,6 +199,8 @@ class AC_GAME_API BotMgr
         static uint32 GetNpcBotCost(uint8 level, uint8 botclass);
         static std::string GetNpcBotCostStr(uint8 level, uint8 botclass);
         static uint8 BotClassByClassName(std::string const& className);
+        static uint8 GetBotPlayerClass(uint8 bot_class);
+        static uint8 GetBotPlayerRace(uint8 bot_class, uint8 bot_race);
         static uint8 GetBotPlayerClass(Creature const* bot);
         static uint8 GetBotPlayerRace(Creature const* bot);
 
@@ -246,6 +254,7 @@ class AC_GAME_API BotMgr
         void SetBotsShouldUpdateStats();
         void UpdatePhaseForBots();
         void UpdatePvPForBots();
+        static void BuildBotPartyMemberStatsPacket(ObjectGuid bot_guid, WorldPacket* data);
 
         void TrackDamage(Unit const* u, uint32 damage);
         uint32 GetDPSTaken(Unit const* u) const;

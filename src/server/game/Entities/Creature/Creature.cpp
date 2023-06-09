@@ -2593,6 +2593,12 @@ bool Creature::CanAssistTo(Unit const* u, Unit const* enemy, bool checkfaction /
     if (GetCharmerOrOwnerGUID())
         return false;
 
+    /// @todo: Implement aggro range, detection range and assistance range templates
+    if (m_creatureInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_IGNORE_ALL_ASSISTANCE_CALLS))
+    {
+        return false;
+    }
+
     // only from same creature faction
     if (checkfaction)
     {
@@ -3503,6 +3509,17 @@ void Creature::UpdateMovementFlags()
     CreatureTemplate const* info = GetCreatureTemplate();
     if (!info)
         return;
+
+    //npcbot: do not update movement flags for vehicles controlled by npcbots
+    if (GetCharmerGUID().IsCreature())
+    {
+        if (CreatureTemplate const* bot_template = sObjectMgr->GetCreatureTemplate(GetCharmerGUID().GetEntry()))
+        {
+            if (bot_template->IsNPCBot())
+                return;
+        }
+    }
+    //end npcbot
 
     // Creatures with CREATURE_FLAG_EXTRA_NO_MOVE_FLAGS_UPDATE should control MovementFlags in your own scripts
     if (info->flags_extra & CREATURE_FLAG_EXTRA_NO_MOVE_FLAGS_UPDATE)

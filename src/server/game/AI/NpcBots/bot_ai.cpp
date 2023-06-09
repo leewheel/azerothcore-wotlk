@@ -2243,22 +2243,13 @@ void bot_ai::SetStats(bool force)
     {
         if (_baseLevel == 0) //this only happens once
         {
+            mylevel = urand(me->GetCreatureTemplate()->minlevel, me->GetCreatureTemplate()->maxlevel);
+            mylevel += BotDataMgr::GetLevelBonusForBotRank(me->GetCreatureTemplate()->rank);
+            _baseLevel = std::max<uint8>(mylevel, BotDataMgr::GetMinLevelForBotClass(_botclass));
             if (me->GetMap()->IsBattlegroundOrArena())
-            {
-                mylevel = urand(me->GetCreatureTemplate()->minlevel, me->GetCreatureTemplate()->maxlevel);
-                mylevel += BotDataMgr::GetLevelBonusForBotRank(me->GetCreatureTemplate()->rank);
-                _baseLevel = std::max<uint8>(mylevel, BotDataMgr::GetMinLevelForBotClass(_botclass));
                 LOG_DEBUG("npcbots", "BG bot {} id {} selected level {}...", me->GetName().c_str(), me->GetEntry(), uint32(_baseLevel));
-            }
-            else if (_travel_node_cur != nullptr)
-            {
-                auto [minlevel, maxlevel] = _travel_node_cur->GetLevels();
-                ASSERT(minlevel > 0 && minlevel > 0);
-                mylevel = urand(std::min<uint8>(minlevel + 2, maxlevel), maxlevel);
-                mylevel += BotDataMgr::GetLevelBonusForBotRank(me->GetCreatureTemplate()->rank);
-                _baseLevel = std::max<uint8>(mylevel, BotDataMgr::GetMinLevelForBotClass(_botclass));
+            else
                 LOG_DEBUG("npcbots", "Wandering bot {} id {} selected level {}...", me->GetName().c_str(), me->GetEntry(), uint32(_baseLevel));
-            }
         }
         else if (me->GetMap()->GetEntry()->IsContinent())
         {
@@ -4552,16 +4543,17 @@ bool bot_ai::ProcessImmediateNonAttackTarget()
 
     static constexpr std::array<uint32, 2> WMOAreaGroupMuru = { 41736, 42759 }; // Shrine of the Eclipse
     static constexpr std::array<uint32, 2> WMOAreaGroupNajentus = { 41129, 41130 }; // Karabor Sewers
+    static constexpr std::array<uint32, 1> WMOAreaGroupVashj = { 37594 }; // Serpentshrine Cavern
 
-    static auto isInWMOArea = [this](auto const& ids) {
+    static auto isInWMOArea = [](auto lastWMO, auto const& ids) {
         for (auto wmoId : ids) {
-            if (wmoId == _lastWMOAreaId)
+            if (wmoId == lastWMO)
                 return true;
         }
         return false;
     };
 
-    if (me->GetMapId() == 580 && isInWMOArea(WMOAreaGroupMuru)) // Sunwell - M'uru
+    if (me->GetMapId() == 580 && isInWMOArea(_lastWMOAreaId, WMOAreaGroupMuru)) // Sunwell - M'uru
     {
         static const uint32 SPELL_PURGE_1 = 370u;
         static const uint32 SPELL_DISPEL_MAGIC_1 = 527u;
@@ -4590,7 +4582,7 @@ bool bot_ai::ProcessImmediateNonAttackTarget()
             }
         }
     }
-    if (me->GetMapId() == 564 && isInWMOArea(WMOAreaGroupNajentus) && Rand() < 10) // Black Temple - High Warlord Naj'entus
+    if (me->GetMapId() == 564 && isInWMOArea(_lastWMOAreaId, WMOAreaGroupNajentus) && Rand() < 10) // Black Temple - High Warlord Naj'entus
     {
         if (Group const* gr = master->GetGroup())
         {
@@ -4678,6 +4670,96 @@ bool bot_ai::ProcessImmediateNonAttackTarget()
         }
     }
 
+    if (me->GetMapId() == 548 && isInWMOArea(_lastWMOAreaId, WMOAreaGroupVashj) && Rand() < 15) // Serpentshrine Cavern - Lady Vashj
+    {
+        uint32 alive_players = 0;
+        std::vector<Player*> taintPlayers;
+        for (MapReference const& ref : me->GetMap()->GetPlayers())
+        {
+            if (Player* player = ref.GetSource())
+            {
+                if (player->IsAlive())
+                    ++alive_players;
+                if (player->HasAuraType(SPELL_AURA_MOD_ROOT) && me->IsWithinDistInMap(player, 20.0f) &&
+                    player->HasItemCount(31088, 1)) // Tainted Core
+                    taintPlayers.push_back(player);
+            }
+        }
+
+        if (!taintPlayers.empty() && alive_players <= 1)
+        {
+#if defined(TRINITY_COMPILER)
+            static const uint32 ShieldGeneratorTriggerNPC = 19870;
+#elif defined(AC_COMPILER)
+            static const uint32 ShieldGeneratorTriggerNPC = WORLD_TRIGGER;
+#endif
+            std::list<Creature*> cList;
+            Acore::AllCreaturesOfEntryInRange check(me, ShieldGeneratorTriggerNPC, 100.f); // Invis KV Shield Generator
+            Acore::CreatureListSearcher<Acore::AllCreaturesOfEntryInRange> csearcher(me, cList, check);
+            Cell::VisitAllObjects(me, csearcher, 100.f);
+
+            std::list<GameObject*> gList;
+            auto is_shield_go = [](GameObject const* gobject) {
+                switch (gobject->GetEntry())
+                {
+                    case 185051:
+                    case 185052:
+                    case 185053:
+                    case 185054:
+                        return true;
+                    default:
+                        return false;
+                }
+            };
+            Acore::GameObjectListSearcher gsearcher(me, gList, is_shield_go);
+            Cell::VisitAllObjects(me, gsearcher, 100.f);
+
+            static const auto get_shield_creature = [](GameObject const* gobject, std::list<Creature*> const& clist) {
+                Creature* c = nullptr;
+                float mindist = 10.0f;
+                for (Creature* creature : clist)
+                {
+                    float dist = gobject->GetDistance(creature);
+                    if (dist < mindist)
+                    {
+                        c = creature;
+                        mindist = dist;
+                    }
+                }
+                return c;
+            };
+
+            gList.remove_if([&cList](GameObject const* gobject) {
+                Creature const* c = get_shield_creature(gobject, cList);
+                return !c || c->GetCurrentSpell(CURRENT_CHANNELED_SPELL) == nullptr;
+            });
+            cList.remove_if([](Creature const* creature) {
+                return creature->GetCurrentSpell(CURRENT_CHANNELED_SPELL) == nullptr;
+            });
+
+            ASSERT(cList.size() == gList.size());
+
+            if (!gList.empty())
+            {
+                Player* player = taintPlayers.size() == 1u ? taintPlayers.front() : Acore::Containers::SelectRandomContainerElement(taintPlayers);
+                BotWhisper("Taking Tainted Core from you");
+                GameObject* go = gList.size() == 1u ? gList.front() : Acore::Containers::SelectRandomContainerElement(gList);
+#if defined(TRINITY_COMPILER)
+                Item* item = player->GetItemByEntry(31088); // Tainted Core
+                SpellCastTargets targets;
+                targets.SetGOTarget(go);
+                sScriptMgr->OnItemUse(player, item, targets);
+#elif defined(AC_COMPILER)
+                Creature* cre = get_shield_creature(go, cList);
+                ASSERT(cre);
+                cre->DespawnOrUnsummon(1);
+                player->DestroyItemCount(31088, 1, true); // Tainted Core
+#endif
+                return true;
+            }
+        }
+    }
+
     return false;
 }
 //POSITION
@@ -4732,11 +4814,9 @@ void bot_ai::CalculateAoeSpots(Unit const* unit, AoeSpotsVec& spots)
         Cell::VisitAllObjects(unit->GetVehicleBase(), searcher2, 60.f);
 
         spellInfo = sSpellMgr->GetSpellInfo(57429); //Static Field damage
+        float radius = spellInfo->Effects[0].CalcRadius() + unit->GetVehicleBase()->GetCombatReach() * 1.2f;
         for (std::list<Creature*>::const_iterator ci = cList.begin(); ci != cList.end(); ++ci)
-        {
-            float radius = spellInfo->Effects[0].CalcRadius() + unit->GetVehicleBase()->GetCombatReach() * 1.2f;
             spots.push_back(AoeSpotsVec::value_type(*(*ci), radius));
-        }
     }
     //Zul'Aman
     else if (unit->GetMapId() == 568)
@@ -4748,10 +4828,25 @@ void bot_ai::CalculateAoeSpots(Unit const* unit, AoeSpotsVec& spots)
         Cell::VisitAllObjects(unit, searcher2, 40.f);
 
         spellInfo = sSpellMgr->GetSpellInfo(42630); //Fire Bomb
+        float radius = spellInfo->Effects[0].CalcRadius() + DEFAULT_COMBAT_REACH * 1.2f;
         for (std::list<Creature*>::const_iterator ci = cList.begin(); ci != cList.end(); ++ci)
-        {
-            float radius = spellInfo->Effects[0].CalcRadius() + DEFAULT_COMBAT_REACH * 1.2f;
             spots.push_back(AoeSpotsVec::value_type(*(*ci), radius));
+    }
+    //Uthgarde Keep
+    else if (unit->GetMapId() == 574)
+    {
+        Creature* creature = nullptr;
+        static const auto shadow_axe_check = [](Creature const* c) {
+            return (c->GetEntry() == CREATURE_UK_SHADOW_AXE_N || c->GetEntry() == CREATURE_UK_SHADOW_AXE_H);
+        };
+        Acore::CreatureSearcher searcher2(unit, creature, shadow_axe_check);
+        Cell::VisitAllObjects(unit, searcher2, 40.f);
+
+        if (creature)
+        {
+            spellInfo = sSpellMgr->GetSpellInfo(42751); //Shadow Axe
+            float radius = spellInfo->Effects[0].CalcRadius() + DEFAULT_COMBAT_REACH * 2.0f;
+            spots.push_back(AoeSpotsVec::value_type(*creature, radius));
         }
     }
     //Icecrown Citadel
@@ -6833,6 +6928,9 @@ void bot_ai::_OnAreaUpdate(uint32 areaId)
     Unit::AuraMap const& ownerAuras = me->GetOwnedAuras();
     for (Unit::AuraMap::const_iterator iter = ownerAuras.cbegin(); iter != ownerAuras.cend(); ++iter)
     {
+        if (iter->second->GetSpellInfo()->HasAura(SPELL_AURA_MOUNTED))
+            continue;
+
         if (iter->second->GetSpellInfo()->CheckLocation(me->GetMapId(), _lastZoneId, areaId, master, false) != SPELL_CAST_OK)
         {
             //me->RemoveOwnedAura(iter);
@@ -9212,9 +9310,12 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
 
             subMenu = true;
 
-            for (size_t i = page * items_per_page; i < botBankItems->size() && counter < items_per_page; ++i)
+            BotBankItemContainer::const_iterator bcit = botBankItems->cbegin();
+            size_t i = 0;
+            for (; i < page * items_per_page && i < botBankItems->size(); ++i, ++bcit);
+            for (; i < botBankItems->size() && counter < items_per_page; ++i, ++bcit)
             {
-                Item const* item = botBankItems->at(i);
+                Item const* item = *bcit;
                 ++counter;
                 std::ostringstream name;
                 _AddItemLink(player, item, name);
@@ -16544,23 +16645,6 @@ bool bot_ai::GlobalUpdate(uint32 diff)
         //send stats update for group frames
         if (me->IsInWorld() && !IAmFree())
         {
-            if (Group const* gr = master->GetGroup())
-            {
-                if (gr->IsMember(me->GetGUID()))
-                {
-                    WorldPacket data;
-                    BuildGrouUpdatePacket(&data);
-
-                    Player* member;
-                    for (GroupReference const* itr = gr->GetFirstMember(); itr != nullptr; itr = itr->next())
-                    {
-                        member = itr->GetSource();
-                        if (member/* && !member->IsWithinDist(me, member->GetSightRange(), false)*/)
-                            member->GetSession()->SendPacket(&data);
-                    }
-                }
-            }
-
             //update pvp state
             if (me->GetByteValue(UNIT_FIELD_BYTES_2, 1) != master->GetByteValue(UNIT_FIELD_BYTES_2, 1))
                 me->SetByteValue(UNIT_FIELD_BYTES_2, 1, master->GetByteValue(UNIT_FIELD_BYTES_2, 1));
@@ -17879,6 +17963,7 @@ void bot_ai::OnBotEnterVehicle(Vehicle const* vehicle)
 
         if (Unit* oVeh = master->GetVehicleBase())
         {
+            CreatureTemplate const* vehTemplate = vehicle->GetBase()->GetTypeId() == TYPEID_UNIT ? vehicle->GetBase()->ToCreature()->GetCreatureTemplate() : nullptr;
             ////Set hp and mana percent to avoid abuse
             //vehicle->GetBase()->SetHealth(vehicle->GetBase()->GetMaxHealth() * oVeh->GetHealthPct() / 100.f + 0.5f);
             //if (oVeh->GetPowerType() == POWER_MANA)
@@ -17887,8 +17972,9 @@ void bot_ai::OnBotEnterVehicle(Vehicle const* vehicle)
             //    vehicle->GetBase()->SetPower(POWER_MANA, vehicle->GetBase()->GetMaxPower(POWER_MANA) * mpPct / 100.f + 0.5f);
             //}
             //speed
-            if (vehicle->GetBase()->GetTypeId() == TYPEID_UNIT &&
-                (vehicle->GetBase()->ToCreature()->GetCreatureTemplate()->Movement.Flight == CreatureFlightMovementType::CanFly))
+            if (vehTemplate &&
+                (vehTemplate->Movement.Flight == CreatureFlightMovementType::CanFly ||
+                vehTemplate->Movement.Flight == CreatureFlightMovementType::DisableGravity))
             {
                 //hack to use vehicle speed
                 vehicle->GetBase()->RemoveAurasByType(SPELL_AURA_MOD_INCREASE_VEHICLE_FLIGHT_SPEED);
@@ -17899,8 +17985,8 @@ void bot_ai::OnBotEnterVehicle(Vehicle const* vehicle)
                 vehicle->GetBase()->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_VEHICLE_SPEED_ALWAYS, true);
                 vehicle->GetBase()->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_FLIGHT_SPEED_NOT_STACK, true);
                 vehicle->GetBase()->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_MOUNTED_SPEED_NOT_STACK, true);
-                vehicle->GetBase()->SetSpeed(MOVE_FLIGHT, oVeh->GetSpeedRate(MOVE_FLIGHT) * 1.17f);
-                vehicle->GetBase()->SetSpeed(MOVE_RUN, oVeh->GetSpeedRate(MOVE_FLIGHT) * 1.17f);
+                vehicle->GetBase()->SetSpeedRate(MOVE_FLIGHT, oVeh->GetSpeedRate(MOVE_FLIGHT) * 1.17f);
+                vehicle->GetBase()->SetSpeedRate(MOVE_RUN, oVeh->GetSpeedRate(MOVE_FLIGHT) * 1.17f);
                 vehicle->GetBase()->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_DECREASE_SPEED, true);
                 vehicle->GetBase()->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_SPEED_SLOW_ALL, true);
             }
@@ -18236,93 +18322,6 @@ void bot_ai::DismountBot()
     me->BotStopMovement();
 }
 
-void bot_ai::BuildGrouUpdatePacket(WorldPacket* data)
-{
-    uint32 mask = GROUP_UPDATE_FULL;
-
-    if (mask & GROUP_UPDATE_FLAG_POWER_TYPE)                // if update power type, update current/max power also
-        mask |= (GROUP_UPDATE_FLAG_CUR_POWER | GROUP_UPDATE_FLAG_MAX_POWER);
-
-    if (mask & GROUP_UPDATE_FLAG_PET_POWER_TYPE)            // same for pets
-        mask |= (GROUP_UPDATE_FLAG_PET_CUR_POWER | GROUP_UPDATE_FLAG_PET_MAX_POWER);
-
-    uint32 byteCount = 0;
-    for (uint8 i = 1; i < GROUP_UPDATE_FLAGS_COUNT; ++i)
-        if (mask & (1 << i))
-            byteCount += GroupUpdateLength[i];
-
-    data->Initialize(SMSG_PARTY_MEMBER_STATS, size_t(8) + 4u + byteCount);
-    *data << me->GetGUID().WriteAsPacked();
-    *data << uint32(mask);
-
-    if (mask & GROUP_UPDATE_FLAG_STATUS)
-    {
-        uint16 playerStatus = MEMBER_STATUS_ONLINE;
-        if (me->IsPvP())
-            playerStatus |= MEMBER_STATUS_PVP;
-
-        if (!me->IsAlive())
-            playerStatus |= MEMBER_STATUS_DEAD;
-
-        if (me->HasByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP))
-            playerStatus |= MEMBER_STATUS_PVP_FFA;
-
-        *data << uint16(playerStatus);
-    }
-
-    if (mask & GROUP_UPDATE_FLAG_CUR_HP)
-        *data << uint32(me->GetHealth());
-
-    if (mask & GROUP_UPDATE_FLAG_MAX_HP)
-        *data << uint32(me->GetMaxHealth());
-
-    Powers powerType = me->GetPowerType();
-    if (mask & GROUP_UPDATE_FLAG_POWER_TYPE)
-        *data << uint8(powerType);
-
-    if (mask & GROUP_UPDATE_FLAG_CUR_POWER)
-        *data << uint16(me->GetPower(powerType));
-
-    if (mask & GROUP_UPDATE_FLAG_MAX_POWER)
-        *data << uint16(me->GetMaxPower(powerType));
-
-    if (mask & GROUP_UPDATE_FLAG_LEVEL)
-        *data << uint16(me->GetLevel());
-
-    if (mask & GROUP_UPDATE_FLAG_ZONE)
-        *data << uint16(me->GetZoneId());
-
-    if (mask & GROUP_UPDATE_FLAG_POSITION)
-    {
-        *data << uint16(me->GetPositionX());
-        *data << uint16(me->GetPositionY());
-    }
-
-    //TODO: ...?
-    //if (mask & GROUP_UPDATE_FLAG_AURAS)
-    //{
-    //    uint64 auramask = player->GetAuraUpdateMaskForRaid();
-    //    *data << uint64(auramask);
-    //    for (uint32 i = 0; i < MAX_AURAS_GROUP_UPDATE; ++i)
-    //    {
-    //        if (auramask & (uint64(1) << i))
-    //        {
-    //            AuraApplication const* aurApp = player->GetVisibleAura(i);
-    //            *data << uint32(aurApp ? aurApp->GetBase()->GetId() : 0);
-    //            *data << uint8(1);
-    //        }
-    //    }
-    //}
-
-    if (mask & GROUP_UPDATE_FLAG_VEHICLE_SEAT)
-    {
-        if (Vehicle* veh = me->GetVehicle())
-            *data << uint32(veh->GetVehicleInfo()->m_seatID[me->m_movementInfo.transport.seat]);
-        else
-            *data << uint32(0);
-    }
-}
-
 //DPS TRACKER
 uint32 bot_ai::GetDPSTaken(Unit const* u) const
 {
@@ -18433,67 +18432,11 @@ uint8 bot_ai::GetBotStance() const
 
 uint8 bot_ai::GetPlayerClass() const
 {
-    if (_botclass >= BOT_CLASS_EX_START)
-    {
-        switch (_botclass)
-        {
-            case BOT_CLASS_BM:
-                return BOT_CLASS_WARRIOR;
-            case BOT_CLASS_SPHYNX:
-                return BOT_CLASS_WARLOCK;
-            case BOT_CLASS_ARCHMAGE:
-                return BOT_CLASS_MAGE;
-            case BOT_CLASS_DREADLORD:
-                return BOT_CLASS_WARLOCK;
-            case BOT_CLASS_SPELLBREAKER:
-                return BOT_CLASS_PALADIN;
-            case BOT_CLASS_DARK_RANGER:
-                return BOT_CLASS_HUNTER;
-            case BOT_CLASS_NECROMANCER:
-                return BOT_CLASS_WARLOCK;
-            case BOT_CLASS_SEA_WITCH:
-                return BOT_CLASS_MAGE;
-            case BOT_CLASS_CRYPT_LORD:
-                return BOT_CLASS_WARRIOR;
-            default:
-                LOG_ERROR("entities.unit", "GetPlayerClass: {} has unknown Ex bot class {}!", me->GetName().c_str(), _botclass);
-                return BOT_CLASS_PALADIN;
-        }
-    }
-
-    return _botclass;
+    return BotMgr::GetBotPlayerClass(_botclass);
 }
 uint8 bot_ai::GetPlayerRace() const
 {
-    if (_botclass >= BOT_CLASS_EX_START)
-    {
-        switch (_botclass)
-        {
-            case BOT_CLASS_BM:
-                return RACE_ORC;
-            case BOT_CLASS_SPHYNX:
-                return RACE_UNDEAD_PLAYER;
-            case BOT_CLASS_ARCHMAGE:
-                return RACE_HUMAN;
-            case BOT_CLASS_DREADLORD:
-                return RACE_UNDEAD_PLAYER;
-            case BOT_CLASS_SPELLBREAKER:
-                return RACE_BLOODELF;
-            case BOT_CLASS_DARK_RANGER:
-                return RACE_BLOODELF;
-            case BOT_CLASS_NECROMANCER:
-                return RACE_HUMAN;
-            case BOT_CLASS_SEA_WITCH:
-                return RACE_TROLL;
-            case BOT_CLASS_CRYPT_LORD:
-                return RACE_UNDEAD_PLAYER;
-            default:
-                LOG_ERROR("entities.unit", "GetPlayerRace: {} has unknown Ex bot class {}!", me->GetName().c_str(), _botclass);
-                return RACE_HUMAN;
-        }
-    }
-
-    return me->GetRace();
+    return BotMgr::GetBotPlayerRace(_botclass, me->GetRace());
 }
 
 uint8 bot_ai::GetBotComboPoints() const

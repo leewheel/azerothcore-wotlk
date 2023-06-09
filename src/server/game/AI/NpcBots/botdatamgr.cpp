@@ -63,6 +63,13 @@ static uint32 next_wandering_bot_spawn_delay = 0;
 
 static EventProcessor botDataEvents;
 
+bool BotBankItemCompare::operator()(Item const* item1, Item const* item2) const
+{
+    ItemTemplate const* proto1 = item1->GetTemplate();
+    ItemTemplate const* proto2 = item2->GetTemplate();
+    return proto1->Name1 < proto2->Name1;
+}
+
 class BotBattlegroundEnterEvent : public BasicEvent
 {
     const ObjectGuid _playerGUID;
@@ -210,13 +217,13 @@ private:
         ASSERT(next_bot_id > BOT_ENTRY_BEGIN);
 
         for (uint8 c = BOT_CLASS_WARRIOR; c < BOT_CLASS_END; ++c)
-            if (c != BOT_CLASS_BM && BotMgr::IsClassEnabled(c) && _spareBotIdsPerClassMap.find(c) == _spareBotIdsPerClassMap.cend())
+            if (BotMgr::IsClassEnabled(c) && _spareBotIdsPerClassMap.find(c) == _spareBotIdsPerClassMap.cend())
                 _spareBotIdsPerClassMap.insert({ c, {} });
 
         for (decltype(_botsExtras)::value_type const& vt : _botsExtras)
         {
             uint8 c = vt.second->bclass;
-            if (c != BOT_CLASS_NONE && c != BOT_CLASS_BM && BotMgr::IsClassEnabled(c))
+            if (c != BOT_CLASS_NONE && BotMgr::IsClassEnabled(c))
             {
                 ++enabledBotsCount;
                 if (_botsData.find(vt.first) == _botsData.end())
@@ -235,12 +242,12 @@ private:
     uint32 GetDefaultFactionForRaceClass(uint8 bot_class, uint8 bot_race) const
     {
         ChrRacesEntry const* rentry = sChrRacesStore.LookupEntry(bot_race);
-        return
-            (bot_class >= BOT_CLASS_EX_START) ? wbot_faction_for_ex_class.find(bot_class)->second : rentry ? rentry->FactionID : 14;
+        return (bot_class >= BOT_CLASS_EX_START) ? wbot_faction_for_ex_class.find(bot_class)->second : rentry ? rentry->FactionID : 14u;
     }
 
-    bool GenerateWanderingBotToSpawn(std::map<uint8, std::set<uint32>>& spareBotIdsPerClass,
-        NodeVec const& spawns_a, NodeVec const& spawns_h, NodeVec const& spawns_n, bool immediate, PvPDifficultyEntry const* bracketEntry, NpcBotRegistry* registry)
+    bool GenerateWanderingBotToSpawn(std::map<uint8, std::set<uint32>>& spareBotIdsPerClass, uint8 desired_bracket,
+        NodeVec const& spawns_a, NodeVec const& spawns_h, NodeVec const& spawns_n,
+        bool immediate, PvPDifficultyEntry const* bracketEntry, NpcBotRegistry* registry)
     {
         ASSERT(!spareBotIdsPerClass.empty());
 
@@ -273,10 +280,10 @@ private:
         }
         NodeVec level_nodes;
         level_nodes.reserve(bot_spawn_nodes->size());
-        uint8 myminlevel = BotDataMgr::GetMinLevelForBotClass(bot_class);
+        desired_bracket = std::max<uint8>(desired_bracket, BotDataMgr::GetMinLevelForBotClass(bot_class) / 10);
         for (WanderNode const* node : *bot_spawn_nodes)
         {
-            if (myminlevel <= node->GetLevels().second)
+            if (desired_bracket * 10 + 9 >= node->GetLevels().first && node->GetLevels().second >= desired_bracket * 10)
                 level_nodes.push_back(node);
         }
 
@@ -297,7 +304,11 @@ private:
             bot_template.maxlevel = std::min<uint32>(bracketEntry->maxLevel, DEFAULT_MAX_LEVEL);
         }
         else
+        {
+            bot_template.minlevel = std::min<uint32>(std::max<uint32>(desired_bracket * 10, 1), DEFAULT_MAX_LEVEL);
+            bot_template.maxlevel = std::min<uint32>(std::min<uint32>(desired_bracket * 10 + 9, spawnLoc->GetLevels().second), DEFAULT_MAX_LEVEL);
             bot_template.flags_extra &= ~(CREATURE_FLAG_EXTRA_NO_XP);
+        }
 
         bot_template.InitializeQueryData();
 
@@ -420,6 +431,8 @@ public:
         }
 
         decltype (_spareBotIdsPerClassMap) teamSpareBotIdsPerClass;
+        BotBrackets bracketPcts{};
+        BotBrackets bots_per_bracket{};
 
         if (team == -1)
         {
@@ -428,9 +441,11 @@ public:
 
             //make a full copy
             teamSpareBotIdsPerClass = _spareBotIdsPerClassMap;
+            bracketPcts = BotMgr::GetBotWandererLevelBrackets();
         }
         else
         {
+            bracketPcts[bracketEntry->minLevel / 10] = 100u;
             switch (team)
             {
                 case ALLIANCE:
@@ -474,12 +489,43 @@ public:
         if (teamSpareBotIdsPerClass.empty())
             return false;
 
-        for (uint32 i = 1; i <= count && !teamSpareBotIdsPerClass.empty();) // i is a counter, NOT used as index or value
+        uint32 total_bots_in_brackets = 0;
+        for (size_t k = 0; k < BracketsCount; ++k)
         {
+            if (!bracketPcts[k])
+                continue;
+            bots_per_bracket[k] = CalculatePct(count, bracketPcts[k]);
+            total_bots_in_brackets += bots_per_bracket[k];
+        }
+        for (int32 j = BracketsCount - 1; j >= 0; --j)
+        {
+            if (bots_per_bracket[j])
+            {
+                bots_per_bracket[j] += count - total_bots_in_brackets;
+                break;
+            }
+        }
+
+        std::vector<uint8> brackets_shuffled;
+        brackets_shuffled.reserve(count);
+        for (uint8 bracket = 0; bracket < BracketsCount; ++bracket)
+        {
+            while (bots_per_bracket[bracket])
+            {
+                brackets_shuffled.push_back(bracket);
+                --bots_per_bracket[bracket];
+            }
+        }
+        Acore::Containers::RandomShuffle(brackets_shuffled);
+
+        for (size_t i = 0; i < brackets_shuffled.size() && !teamSpareBotIdsPerClass.empty();) // i is a counter, NOT used as index or value
+        {
+            uint8 bracket = brackets_shuffled[i];
+
             int8 tries = 100;
             do {
                 --tries;
-                if (GenerateWanderingBotToSpawn(teamSpareBotIdsPerClass, spawns_a, spawns_h, spawns_n, immediate, bracketEntry, registry))
+                if (GenerateWanderingBotToSpawn(teamSpareBotIdsPerClass, bracket, spawns_a, spawns_h, spawns_n, immediate, bracketEntry, registry))
                 {
                     ++i;
                     ++spawned;
@@ -900,7 +946,7 @@ void BotDataMgr::LoadNpcBotGearStorage()
         ObjectGuid player_guid = ObjectGuid::Create<HighGuid::Player>(player_guidlow);
         ASSERT(item->LoadFromDB(item_guidlow, player_guid, fields, item_id), "LoadNpcBotGearStorage(): unable to load item {} id {}! Owner: {}", item_guidlow, item_id, player_guid.ToString().c_str());
 
-        _botStoredGearMap[player_guid].push_back(item);
+        _botStoredGearMap[player_guid].insert(item);
         player_guids.insert(player_guidlow);
         ++count;
 
@@ -1188,11 +1234,22 @@ void BotDataMgr::GenerateWanderingBots()
 
 bool BotDataMgr::GenerateBattlegroundBots(Player const* groupLeader, [[maybe_unused]] Group const* group, BattlegroundQueue* queue, PvPDifficultyEntry const* bracketEntry, GroupQueueInfo const* gqinfo)
 {
+    if (!BotMgr::IsBotGenerationEnabledBGs())
+        return true;
+
     BattlegroundTypeId bgTypeId = gqinfo->BgTypeId;
     uint8 atype = gqinfo->ArenaType;
     uint32 ammr = gqinfo->ArenaMatchmakerRating;
     BattlegroundBracketId bracketId = bracketEntry->GetBracketId();
     BattlegroundQueueTypeId bgqTypeId = sBattlegroundMgr->BGQueueTypeId(bgTypeId, atype);
+
+    uint32 tarteamplayers = BotMgr::GetBGTargetTeamPlayersCount(bgTypeId);
+
+    if (tarteamplayers == 0)
+    {
+        LOG_INFO("npcbots", "[Disabled] BG {} wandering bots generation is disabled (not implemented?)", uint32(bgTypeId));
+        return true;
+    }
 
     uint32 spareBots = sBotGen->GetSpareBotsCount();
 
@@ -1230,7 +1287,8 @@ bool BotDataMgr::GenerateBattlegroundBots(Player const* groupLeader, [[maybe_unu
 
     uint32 minteamplayers = bg_template->GetMinPlayersPerTeam();
     uint32 maxteamplayers = bg_template->GetMaxPlayersPerTeam();
-    uint32 avgteamplayers = (minteamplayers + 1 + maxteamplayers) / 2;
+
+    RoundToInterval(tarteamplayers, minteamplayers, maxteamplayers);
 
     uint32 queued_players_a = 0;
     uint32 queued_players_h = 0;
@@ -1245,8 +1303,8 @@ bool BotDataMgr::GenerateBattlegroundBots(Player const* groupLeader, [[maybe_unu
         }
     }
 
-    uint32 needed_bots_count_a = (queued_players_a < avgteamplayers) ? (avgteamplayers - queued_players_a) : 0;
-    uint32 needed_bots_count_h = (queued_players_h < avgteamplayers) ? (avgteamplayers - queued_players_h) : 0;
+    uint32 needed_bots_count_a = (queued_players_a < tarteamplayers) ? (tarteamplayers - queued_players_a) : 0;
+    uint32 needed_bots_count_h = (queued_players_h < tarteamplayers) ? (tarteamplayers - queued_players_h) : 0;
 
     ASSERT(needed_bots_count_a <= maxteamplayers);
     ASSERT(needed_bots_count_h <= maxteamplayers);
@@ -2596,7 +2654,7 @@ Item* BotDataMgr::WithdrawBotBankItem(ObjectGuid playerGuid, ObjectGuid::LowType
 
 void BotDataMgr::DepositBotBankItem(ObjectGuid playerGuid, Item* item)
 {
-    _botStoredGearMap[playerGuid].push_back(item);
+    _botStoredGearMap[playerGuid].insert(item);
 }
 
 void BotDataMgr::SaveNpcBotStoredGear(ObjectGuid playerGuid, CharacterDatabaseTransaction trans)

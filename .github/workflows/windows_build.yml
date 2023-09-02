@@ -29,6 +29,8 @@ jobs:
         uses: actions/checkout@v3
         with:
           submodules: recursive
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2.9
       - name: Configure OS
         shell: bash
         env:
@@ -63,6 +65,7 @@ jobs:
         run: |
           rm -rf env/dist/data
           cp "/c/tools/mysql/current/lib/libmysql.dll" "env/dist"
+          cp "/c/Program Files/OpenSSL/bin/legacy.dll" "env/dist"
       # cp "/c/Program Files/OpenSSL-Win64/bin/libcrypto-1_1-x64.dll" "env/dist"
       # cp "/c/Program Files/OpenSSL-Win64/bin/libssl-1_1-x64.dll" "env/dist"
       - uses: actions/upload-artifact@v3

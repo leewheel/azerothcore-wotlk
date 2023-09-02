@@ -62,6 +62,7 @@ CreatureMovementData::CreatureMovementData() : Ground(CreatureGroundMovementType
 
 //npcbot
 #include "bot_ai.h"
+#include "botmgr.h"
 #include "bpet_ai.h"
 //end npcbot
 
@@ -1380,11 +1381,8 @@ void Creature::SetLootRecipient(Unit* unit, bool withGroup)
     */
     //npcbot - loot recipient of bot's vehicle is owner
     Player* player = nullptr;
-    if (unit->IsVehicle() && unit->GetCharmerGUID().IsCreature() && unit->GetCreatorGUID().IsPlayer())
-    {
-        if (Unit* uowner = unit->GetCreator())
-            player = uowner->ToPlayer();
-    }
+    if (unit->IsVehicle() && unit->GetCharmerGUID().IsCreature() && unit->GetCreator() && unit->GetCreator()->IsPlayer())
+        player = unit->GetCreator()->ToPlayer();
     else
         player = unit->GetCharmerOrOwnerPlayerOrPlayerItself();
     //end npcbot
@@ -2593,6 +2591,11 @@ bool Creature::CanAssistTo(Unit const* u, Unit const* enemy, bool checkfaction /
     if (GetCharmerOrOwnerGUID())
         return false;
 
+    //npcbot
+    if (IsNPCBotOrPet())
+        return false;
+    //end npcbot
+
     /// @todo: Implement aggro range, detection range and assistance range templates
     if (m_creatureInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_IGNORE_ALL_ASSISTANCE_CALLS))
     {
@@ -3237,6 +3240,11 @@ void Creature::SetPosition(float x, float y, float z, float o)
     if (!Acore::IsValidMapCoord(x, y, z, o))
         return;
 
+    //npcbot: send bot group update
+    if (IsNPCBot())
+        BotMgr::SetBotGroupUpdateFlag(ToCreature(), GROUP_UPDATE_FLAG_POSITION);
+    //end npcbot
+
     GetMap()->CreatureRelocation(this, x, y, z, o);
 }
 
@@ -3610,6 +3618,15 @@ void Creature::SetDisplayId(uint32 modelId)
         combatReach = DEFAULT_COMBAT_REACH;
 
     SetFloatValue(UNIT_FIELD_COMBATREACH, combatReach * GetObjectScale());
+
+    //npcbot: send group update for bot pet
+    if (IsNPCBotPet())
+    {
+        if (Creature const* botPetOwner = GetBotPetAI() ? GetBotPetAI()->GetPetsOwner() : nullptr)
+            if (botPetOwner->GetBotAI()->GetGroup())
+                BotMgr::SetBotGroupUpdateFlag(botPetOwner, GROUP_UPDATE_FLAG_PET_MODEL_ID);
+    }
+    //end npcbot
 }
 
 void Creature::SetTarget(ObjectGuid guid)
@@ -4028,6 +4045,54 @@ bool Creature::IsFreeBot() const
 bool Creature::IsWandererBot() const
 {
     return bot_AI ? bot_AI->IsWanderer() : bot_pet_AI ? bot_pet_AI->IsWanderer() : false;
+}
+
+Group* Creature::GetBotGroup() const
+{
+    return bot_AI ? bot_AI->GetGroup() : nullptr;
+}
+void Creature::SetBotGroup(Group* group, int8 subgroup)
+{
+    if (bot_AI)
+        bot_AI->SetGroup(group, subgroup);
+}
+uint8 Creature::GetSubGroup() const
+{
+    return bot_AI ? bot_AI->GetSubGroup() : 0;
+}
+void Creature::SetSubGroup(uint8 subgroup)
+{
+    if (bot_AI)
+        bot_AI->SetSubGroup(subgroup);
+}
+
+void Creature::SetBattlegroundOrBattlefieldRaid(Group* group, int8 subgroup)
+{
+    if (bot_AI)
+        bot_AI->SetBattlegroundOrBattlefieldRaid(group, subgroup);
+}
+void Creature::RemoveFromBattlegroundOrBattlefieldRaid()
+{
+    if (bot_AI)
+        bot_AI->RemoveFromBattlegroundOrBattlefieldRaid();
+}
+Group* Creature::GetOriginalGroup() const
+{
+    return bot_AI ? bot_AI->GetOriginalGroup() : nullptr;
+}
+void Creature::SetOriginalGroup(Group* group, int8 subgroup)
+{
+    if (bot_AI)
+        bot_AI->SetOriginalGroup(group, subgroup);
+}
+uint8 Creature::GetOriginalSubGroup() const
+{
+    return bot_AI ? bot_AI->GetOriginalSubGroup() : 0;
+}
+void Creature::SetOriginalSubGroup(uint8 subgroup)
+{
+    if (bot_AI)
+        bot_AI->SetOriginalSubGroup(subgroup);
 }
 
 Battleground* Creature::GetBotBG() const

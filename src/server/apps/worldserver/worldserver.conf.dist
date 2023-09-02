@@ -949,6 +949,14 @@ MaxArenaPoints = 10000
 StartArenaPoints = 0
 
 #
+#   Arena.LegacyArenaPoints
+#        Description: Use arena point calculation from TBC for season 1 - 5 when rating is less or equal to 1500
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+Arena.LegacyArenaPoints = 0
+
+#
 #    RecruitAFriend.MaxLevel
 #        Description: Highest level up to which a character can benefit from the Recruit-A-Friend
 #                     experience multiplier.
@@ -1298,18 +1306,6 @@ AllowTickets = 1
 DeletedCharacterTicketTrace = 0
 
 #
-#     DungeonFinder.OptionsMask
-#        Description: Dungeon and raid finder system.
-#        Value is a bitmask consisting of:
-#           LFG_OPTION_ENABLE_DUNGEON_FINDER    = 1,     Enable the dungeon finder browser
-#           LFG_OPTION_ENABLE_RAID_BROWSER      = 2,     Enable the raid browser
-#           LFG_OPTION_ENABLE_SEASONAL_BOSSES   = 4,     Enable seasonal bosses
-
-#        Default:     5
-
-DungeonFinder.OptionsMask = 5
-
-#
 #   DBC.EnforceItemAttributes
 #        Disallow overriding item attributes stored in DBC files with values from the database
 #        Default: 0 - Off, Use DB values
@@ -1574,6 +1570,14 @@ AllowTwoSide.Interaction.Group = 0
 #                     1 - (Enabled)
 
 AllowTwoSide.Interaction.Guild = 0
+
+#
+#    AllowTwoSide.Interaction.Arena
+#        Description: Allow joining arena teams between factions.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+AllowTwoSide.Interaction.Arena = 0
 
 #
 #    AllowTwoSide.Interaction.Auction
@@ -3055,13 +3059,24 @@ Arena.GamesRequired = 10
 Arena.QueueAnnouncer.Enable = 0
 
 #
-#    Battleground.QueueAnnouncer.PlayerOnly
-#        Description: Battleground queue announcement type.
+#    Arena.QueueAnnouncer.PlayerOnly
+#        Description: Arena queue announcement type.
 #        Default:     0 - (System message, Anyone can see it)
 #                     1 - (Private, Only queued players can see it)
 #
 
 Arena.QueueAnnouncer.PlayerOnly = 0
+
+#
+#    Arena.QueueAnnouncer.Detail
+#        Description: The amount of detail to announce on teams queued for arenas.
+#        Default:     3 - (Announce the team's name and rating)
+#                     2 - (Announce only the team's name)
+#                     1 - (Announce only the team's rating)
+#                     0 - (Do not announce any information about the teams)
+#
+
+Arena.QueueAnnouncer.Detail = 3
 
 #
 #    Arena.ArenaSeason.ID
@@ -3683,6 +3698,17 @@ Calculate.Gameoject.Zone.Area.Data = 0
 Group.Raid.LevelRestriction = 10
 
 #
+#     DungeonFinder.OptionsMask
+#        Description: Dungeon and raid finder system.
+#        Value is a bitmask consisting of:
+#           LFG_OPTION_ENABLE_DUNGEON_FINDER    = 1,     Enable the dungeon finder browser
+#           LFG_OPTION_ENABLE_RAID_BROWSER      = 2,     Enable the raid browser
+#           LFG_OPTION_ENABLE_SEASONAL_BOSSES   = 4,     Enable seasonal bosses
+#        Default:     5
+
+DungeonFinder.OptionsMask = 5
+
+#
 #    LFG.Location.All
 #
 #     Includes satellite to search for work elsewhere LFG
@@ -3843,6 +3869,13 @@ ChangeFaction.MaxMoney = 0
 #                     0 - Disabled
 
 Pet.RankMod.Health = 1
+
+#
+#     AuctionHouse.SearchTimeout
+#        Description: Time (in milliseconds) after which an auction house search is discarded.
+#        Default:     1000 - (1 second)
+
+AuctionHouse.SearchTimeout = 1000
 
 #
 ###################################################################################################
@@ -4193,13 +4226,16 @@ NpcBot.Botgiver.FilterRaces = 0
 NpcBot.BaseFollowDistance = 30
 
 #
-#    NpcBot.XpReduction
-#        Description: XP percent penalty for each bot used starting with second.
-#        Example:     3 bots, xp reduction is 20: ((3-1)*20) = 40%, 60% exp gained only.
+#    NpcBot.XpReduction.Amount
+#    NpcBot.XpReduction.StartingNumber
+#        Description: XP percent penalty for each bot used starting with <StartingNumber>.
+#        Example:     3 bots, reduction is 20, start is 2: ((3-(2-1))*20) = 40%, 60% exp gained.
 #        Note:        Maximum overall xp reduction is 90%.
-#        Default:     0
+#        Default:     0 - (NpcBot.XpReduction.Amount)
+#                     2 - (NpcBot.XpReduction.StartingNumber)
 
-NpcBot.XpReduction = 0
+NpcBot.XpReduction.Amount         = 0
+NpcBot.XpReduction.StartingNumber = 2
 
 #
 #    NpcBot.HealTargetIconMask
@@ -4568,6 +4604,14 @@ NpcBot.WanderingBots.Continents.Count = 0
 NpcBot.WanderingBots.Continents.Levels = 25,15,15,10,5,10,20,0,0
 
 #
+#    NpcBot.WanderingBots.Continents.Maps
+#        Description: Continent map IDs where wandering bots are allowed to spawn.
+#        Note:        Wandering bots will never outlevel the map they are in.
+#        Default:     0,1,530,571 - (Eastern Kingdoms, Kalimdor, Outland, Northrend)
+
+NpcBot.WanderingBots.Continents.Maps = 0,1,530,571
+
+#
 #    NpcBot.WanderingBots.BG.Enable
 #        Description: Allow wandering bots generation for Battlegrounds.
 #        Note:        Bots are temporarily borrowed from non-spawned bots pool.
@@ -4577,17 +4621,26 @@ NpcBot.WanderingBots.Continents.Levels = 25,15,15,10,5,10,20,0,0
 NpcBot.WanderingBots.BG.Enable = 0
 
 #
+#    NpcBot.WanderingBots.BG.CapLevel
+#        Description: Enforce BG bot maximum level limit set by Expansion and MaxPlayerLevel
+#                     config paramter values.
+#        Default:     0 - (Disabled)
+#                     1 - (Enable)
+
+NpcBot.WanderingBots.BG.CapLevel = 0
+
+#
 #    NpcBot.WanderingBots.BG.TargetTeamPlayersCount.<BGTYPE>
 #        Description: Target BG players count per team to aim for when generating BG bots.
 #        Note:        These values can't go beyond BG minimum / maximum players per team bounds.
-#        Default:     0  - (NpcBot.WanderingBots.BG.TargetTeamPlayersCount.AV) (NYI, Disabled)
+#        Default:     30 - (NpcBot.WanderingBots.BG.TargetTeamPlayersCount.AV)
 #                     8  - (NpcBot.WanderingBots.BG.TargetTeamPlayersCount.WS)
 #                     12 - (NpcBot.WanderingBots.BG.TargetTeamPlayersCount.AB)
 #                     0  - (NpcBot.WanderingBots.BG.TargetTeamPlayersCount.EY) (NYI, Disabled)
 #                     0  - (NpcBot.WanderingBots.BG.TargetTeamPlayersCount.SA) (NYI, Disabled)
 #                     0  - (NpcBot.WanderingBots.BG.TargetTeamPlayersCount.IC) (NYI, Disabled)
 
-NpcBot.WanderingBots.BG.TargetTeamPlayersCount.AV = 0
+NpcBot.WanderingBots.BG.TargetTeamPlayersCount.AV = 30
 NpcBot.WanderingBots.BG.TargetTeamPlayersCount.WS = 8
 NpcBot.WanderingBots.BG.TargetTeamPlayersCount.AB = 12
 NpcBot.WanderingBots.BG.TargetTeamPlayersCount.EY = 0

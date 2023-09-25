@@ -647,6 +647,7 @@ Appender.Server=2,5,0,Server.log,w
 # Appender.GM=2,5,15,gm_%s.log
 Appender.Errors=2,5,0,Errors.log
 # Appender.DB=3,5,0
+Appender.NpcBots=1,2,0
 
 #  Logger config values: Given a logger "name"
 #    Logger.name
@@ -753,6 +754,7 @@ Logger.spells.scripts=2,Console Errors
 #Logger.vehicles=4,Console Server
 #Logger.warden=4,Console Server
 #Logger.weather=4,Console Server
+Logger.npcbots=2,NpcBots Server
 
 #
 #    Log.Async.Enable
@@ -4375,12 +4377,6 @@ Debug.Arena = 0
 ###################################################################################################
 
 ###################################################################################################
-#                                                                                                 #
-# GAME SETTINGS END                                                                               #
-#                                                                                                 #
-###################################################################################################
-
-###################################################################################################
 # NPCBOT CONFIGURATION
 #
 #    NpcBot.Enable
@@ -4878,4 +4874,10 @@ NpcBot.HK.Achievements.Enable = 0
 NpcBot.HK.Rate.Honor = 1.0
 
 #
+###################################################################################################
+
+###################################################################################################
+#                                                                                                 #
+# GAME SETTINGS END                                                                               #
+#                                                                                                 #
 ###################################################################################################

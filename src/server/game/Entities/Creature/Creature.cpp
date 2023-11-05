@@ -312,9 +312,6 @@ void Creature::RemoveFromWorld()
         if (m_formation)
             sFormationMgr->RemoveCreatureFromGroup(m_formation, this);
 
-        if (Transport* transport = GetTransport())
-            transport->RemovePassenger(this, true);
-
         Unit::RemoveFromWorld();
 
         if (m_spawnId)
@@ -330,7 +327,7 @@ void Creature::DisappearAndDie()
     //SetVisibility(VISIBILITY_OFF);
     //ObjectAccessor::UpdateObjectVisibility(this);
     if (IsAlive())
-        setDeathState(JUST_DIED, true);
+        setDeathState(DeathState::JustDied, true);
     RemoveCorpse(false, true);
 }
 
@@ -361,11 +358,11 @@ void Creature::RemoveCorpse(bool setSpawnTime, bool skipVisibility)
         return;
     //end npcbot
 
-    if (getDeathState() != CORPSE)
+    if (getDeathState() != DeathState::Corpse)
         return;
 
     m_corpseRemoveTime = GameTime::GetGameTime().count();
-    setDeathState(DEAD);
+    setDeathState(DeathState::Dead);
     RemoveAllAuras();
     if (!skipVisibility) // pussywizard
         DestroyForNearbyPlayers(); // pussywizard: previous UpdateObjectVisibility()
@@ -646,15 +643,15 @@ void Creature::Update(uint32 diff)
 
     switch (m_deathState)
     {
-        case JUST_RESPAWNED:
+        case DeathState::JustRespawned:
             // Must not be called, see Creature::setDeathState JUST_RESPAWNED -> ALIVE promoting.
-            LOG_ERROR("entities.unit", "Creature ({}) in wrong state: JUST_RESPAWNED (4)", GetGUID().ToString());
+            LOG_ERROR("entities.unit", "Creature ({}) in wrong state: DeathState::JustRespawned (4)", GetGUID().ToString());
             break;
-        case JUST_DIED:
+        case DeathState::JustDied:
             // Must not be called, see Creature::setDeathState JUST_DIED -> CORPSE promoting.
-            LOG_ERROR("entities.unit", "Creature ({}) in wrong state: JUST_DEAD (1)", GetGUID().ToString());
+            LOG_ERROR("entities.unit", "Creature ({}) in wrong state: DeathState::JustDead (1)", GetGUID().ToString());
             break;
-        case DEAD:
+        case DeathState::Dead:
         {
             //npcbot
             if (bot_AI || bot_pet_AI)
@@ -700,11 +697,11 @@ void Creature::Update(uint32 diff)
             }
             break;
         }
-        case CORPSE:
+        case DeathState::Corpse:
         {
             Unit::Update(diff);
             // deathstate changed on spells update, prevent problems
-            if (m_deathState != CORPSE)
+            if (m_deathState != DeathState::Corpse)
                 break;
 
             if (m_groupLootTimer && lootingGroupLowGUID)
@@ -742,7 +739,7 @@ void Creature::Update(uint32 diff)
             }
             break;
         }
-        case ALIVE:
+        case DeathState::Alive:
         {
             Unit::Update(diff);
 
@@ -1814,7 +1811,7 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
     m_wanderDistance = data->wander_distance;
 
     m_respawnDelay = data->spawntimesecs;
-    m_deathState = ALIVE;
+    m_deathState = DeathState::Alive;
 
     //npcbot: remove respawn time if any
     if (IsNPCBotOrPet())
@@ -1824,7 +1821,7 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
     m_respawnTime  = GetMap()->GetCreatureRespawnTime(m_spawnId);
     if (m_respawnTime)                          // respawn on Update
     {
-        m_deathState = DEAD;
+        m_deathState = DeathState::Dead;
         if (CanFly())
         {
             float tz = map->GetHeight(GetPhaseMask(), data->posX, data->posY, data->posZ, true, MAX_FALL_DISTANCE);
@@ -1854,7 +1851,7 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
         SetPower(POWER_MANA, GetMaxPower(POWER_MANA));
     }
 
-    SetHealth(m_deathState == ALIVE ? curhealth : 0);
+    SetHealth(m_deathState == DeathState::Alive ? curhealth : 0);
 
     // checked at creature_template loading
     m_defaultMovementType = MovementGeneratorType(data->movementType);
@@ -1944,7 +1941,25 @@ void Creature::DeleteFromDB()
         return;
     }
 
-    GetMap()->RemoveCreatureRespawnTime(m_spawnId);
+    CreatureData const* data = sObjectMgr->GetCreatureData(m_spawnId);
+    if (!data)
+        return;
+
+    CharacterDatabaseTransaction charTrans = CharacterDatabase.BeginTransaction();
+
+    sMapMgr->DoForAllMapsWithMapId(data->mapid,
+        [this, charTrans](Map* map) -> void
+        {
+            // despawn all active creatures, and remove their respawns
+            std::vector<Creature*> toUnload;
+            for (auto const& pair : Acore::Containers::MapEqualRange(map->GetCreatureBySpawnIdStore(), m_spawnId))
+                toUnload.push_back(pair.second);
+            for (Creature* creature : toUnload)
+                map->AddObjectToRemoveList(creature);
+            map->RemoveCreatureRespawnTime(m_spawnId);
+        }
+    );
+
     sObjectMgr->DeleteCreatureData(m_spawnId);
 
     WorldDatabaseTransaction trans = WorldDatabase.BeginTransaction();
@@ -2065,7 +2080,7 @@ void Creature::setDeathState(DeathState s, bool despawn)
 {
     Unit::setDeathState(s, despawn);
 
-    if (s == JUST_DIED)
+    if (s == DeathState::JustDied)
     {
         _lastDamagedTime.reset();
 
@@ -2099,9 +2114,9 @@ void Creature::setDeathState(DeathState s, bool despawn)
         if (needsFalling)
             GetMotionMaster()->MoveFall(0, true);
 
-        Unit::setDeathState(CORPSE, despawn);
+        Unit::setDeathState(DeathState::Corpse, despawn);
     }
-    else if (s == JUST_RESPAWNED)
+    else if (s == DeathState::JustRespawned)
     {
         //if (IsPet())
         //    setActive(true);
@@ -2123,7 +2138,7 @@ void Creature::setDeathState(DeathState s, bool despawn)
         ClearUnitState(uint32(UNIT_STATE_ALL_STATE & ~(UNIT_STATE_IGNORE_PATHFINDING | UNIT_STATE_NO_ENVIRONMENT_UPD)));
         SetMeleeDamageSchool(SpellSchools(cinfo->dmgschool));
 
-        Unit::setDeathState(ALIVE, despawn);
+        Unit::setDeathState(DeathState::Alive, despawn);
 
         Motion_Initialize();
         LoadCreaturesAddon(true);
@@ -2144,14 +2159,14 @@ void Creature::Respawn(bool force)
     if (force)
     {
         if (IsAlive())
-            setDeathState(JUST_DIED);
-        else if (getDeathState() != CORPSE)
-            setDeathState(CORPSE);
+            setDeathState(DeathState::JustDied);
+        else if (getDeathState() != DeathState::Corpse)
+            setDeathState(DeathState::Corpse);
     }
 
     RemoveCorpse(false, false);
 
-    if (getDeathState() == DEAD)
+    if (getDeathState() == DeathState::Dead)
     {
         if (m_spawnId)
         {
@@ -2179,7 +2194,7 @@ void Creature::Respawn(bool force)
         loot.clear();
         SelectLevel();
 
-        setDeathState(JUST_RESPAWNED);
+        setDeathState(DeathState::JustRespawned);
 
         // MDic - Acidmanifesto
         // Do not override transform auras
@@ -2231,7 +2246,7 @@ void Creature::ForcedDespawn(uint32 timeMSToDespawn, Seconds forceRespawnTimer)
     }
 
     if (IsAlive())
-        setDeathState(JUST_DIED, true);
+        setDeathState(DeathState::JustDied, true);
 
     // Xinef: set new respawn time, ignore corpse decay time...
     RemoveCorpse(true);
@@ -3243,15 +3258,12 @@ std::string const& Creature::GetNameForLocaleIdx(LocaleConstant loc_idx) const
 
 void Creature::SetPosition(float x, float y, float z, float o)
 {
-    if (!Acore::IsValidMapCoord(x, y, z, o))
-        return;
-
     //npcbot: send bot group update
     if (IsNPCBot())
         BotMgr::SetBotGroupUpdateFlag(ToCreature(), GROUP_UPDATE_FLAG_POSITION);
     //end npcbot
 
-    GetMap()->CreatureRelocation(this, x, y, z, o);
+    UpdatePosition(x, y, z, o, false);
 }
 
 bool Creature::IsDungeonBoss() const
@@ -3984,7 +3996,7 @@ bool Creature::LoadBotCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool
     //We should set first home position, because then AI calls home movement
     SetHomePosition(*this);
 
-    m_deathState = ALIVE;
+    m_deathState = DeathState::Alive;
     m_respawnTime = 0;
 
     uint32 curhealth;
@@ -4006,7 +4018,7 @@ bool Creature::LoadBotCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool
         SetPower(POWER_MANA, GetMaxPower(POWER_MANA));
     }
 
-    SetHealth(m_deathState == ALIVE ? curhealth : 0);
+    SetHealth(m_deathState == DeathState::Alive ? curhealth : 0);
 
     // checked at creature_template loading
     m_defaultMovementType = data ? MovementGeneratorType(data->movementType) : IDLE_MOTION_TYPE;

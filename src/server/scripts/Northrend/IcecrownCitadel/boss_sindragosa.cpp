@@ -342,6 +342,7 @@ public:
             events.ScheduleEvent(EVENT_ICY_GRIP, 33s + 500ms, EVENT_GROUP_LAND_PHASE);
 
             me->setActive(true);
+            me->SetFarVisible(true);
             me->SetInCombatWithZone();
             instance->SetBossState(DATA_SINDRAGOSA, IN_PROGRESS);
 
@@ -380,6 +381,7 @@ public:
                     return;
 
                 me->setActive(true);
+                me->SetFarVisible(true);
                 me->SetDisableGravity(true);
                 me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
                 me->SetSpeed(MOVE_RUN, 4.28571f);
@@ -1432,6 +1434,7 @@ public:
                     return;
 
                 me->setActive(true);
+                me->SetFarVisible(true);
                 me->SetImmuneToPC(true);
                 float moveTime = me->GetExactDist(&SpinestalkerFlyPos) / (me->GetSpeed(MOVE_RUN) * 0.001f);
                 me->m_Events.AddEvent(new FrostwyrmLandEvent(*me, SpinestalkerLandPos), me->m_Events.CalculateTime(uint64(moveTime) + 250));
@@ -1448,6 +1451,7 @@ public:
                 return;
 
             me->setActive(false);
+            me->SetFarVisible(false);
             me->SetDisableGravity(false);
             me->SetHomePosition(SpinestalkerLandPos);
             me->SetFacingTo(SpinestalkerLandPos.GetOrientation());
@@ -1563,6 +1567,7 @@ public:
                     return;
 
                 me->setActive(true);
+                me->SetFarVisible(true);
                 me->SetImmuneToPC(true);
                 float moveTime = me->GetExactDist(&RimefangFlyPos) / (me->GetSpeed(MOVE_RUN) * 0.001f);
                 me->m_Events.AddEvent(new FrostwyrmLandEvent(*me, RimefangLandPos), me->m_Events.CalculateTime(uint64(moveTime) + 250));
@@ -1581,6 +1586,8 @@ public:
             if (point == POINT_FROSTWYRM_LAND)
             {
                 me->setActive(false);
+                me->SetFarVisible(false);
+                me->SetFarVisible(false);
                 me->SetDisableGravity(false);
                 me->SetHomePosition(RimefangLandPos);
                 me->SetFacingTo(RimefangLandPos.GetOrientation());

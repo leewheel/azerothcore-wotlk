@@ -438,6 +438,6 @@ void AddSC_boss_lady_vashj()
     RegisterSpellScript(spell_lady_vashj_summon_sporebat);
     RegisterSpellScript(spell_lady_vashj_spore_drop_effect);
     RegisterSpellScript(spell_lady_vashj_summons);
-    RegisterSpellScript(spell_lady_vashj_paralyze);
+    new spell_lady_vashj_paralyze();
 }
 

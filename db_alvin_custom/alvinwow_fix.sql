@@ -131,7 +131,7 @@ UPDATE `creature_template` SET `flags_extra` = 514 WHERE `entry` in (23340, 2334
 REPLACE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES (38132, 'spell_lady_vashj_paralyze');
 
 -- fix no way point
-UPDATE `creature` SET `MovementType` = 1, `wander_distance` = 5 WHERE `guid` in (6973, 6974, 6975, 6989, 7210, 42575, 43480, 43481, 48850, 74169, 75654, 82897, 84011, 86626, 125869, 126441, 128577, 137481, 137482, 137483, 137484, 137611, 201253, 207210, 207211);
+UPDATE `creature` SET `MovementType` = 1, `wander_distance` = 5 WHERE `guid` in (42575, 43480, 43481, 48850, 74169, 75654, 82897, 84011, 86626, 125869, 126441, 128577, 137481, 137482, 137483, 137484, 137611, 201253, 207210, 207211);
 
 -- fix link id missing
 DELETE FROM `smart_scripts` WHERE (`entryorguid` = 4507) AND (`source_type` = 0) AND (`id` IN (3, 4, 6, 2));

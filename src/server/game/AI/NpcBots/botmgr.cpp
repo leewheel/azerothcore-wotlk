@@ -244,7 +244,7 @@ BotMgr::BotMgr(Player* const master) : _owner(master), _dpstracker(new DPSTracke
     _npcBotEngageDelayDPS = _npcBotEngageDelayDPS_default;
     _npcBotEngageDelayHeal = _npcBotEngageDelayHeal_default;
 
-    _botsHidden = false;
+    _botsHidden = true;
     _quickrecall = false;
 }
 BotMgr::~BotMgr()

@@ -317,6 +317,7 @@ public:
                     Talk(THADDIUS_SAY_AGGRO);
                     me->SetReactState(REACT_AGGRESSIVE);
                     me->SetControlled(false, UNIT_STATE_STUNNED);
+                    me->SetControlled(false, UNIT_STATE_ROOT);
                     me->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
                     events.ScheduleEvent(EVENT_THADDIUS_CHAIN_LIGHTNING, 14s);
                     events.ScheduleEvent(EVENT_THADDIUS_BERSERK, 6min);

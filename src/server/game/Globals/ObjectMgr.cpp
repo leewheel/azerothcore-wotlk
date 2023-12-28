@@ -2490,7 +2490,7 @@ void ObjectMgr::LoadGameobjects()
 {
     uint32 oldMSTime = getMSTime();
 
-//    uint32 count = 0;
+    uint32 count = 0;
 
     //                                                0                1   2    3           4           5           6
     QueryResult result = WorldDatabase.Query("SELECT gameobject.guid, id, map, position_x, position_y, position_z, orientation, "
@@ -2651,7 +2651,7 @@ void ObjectMgr::LoadGameobjects()
 
         if (gameEvent == 0 && PoolId == 0)                      // if not this is to be managed by GameEvent System or Pool system
             AddGameobjectToGrid(guid, &data);
-//        ++count;
+        ++count;
     } while (result->NextRow());
 
     LOG_INFO("server.loading", ">> Loaded {} Gameobjects in {} ms", (unsigned long)_gameObjectDataStore.size(), GetMSTimeDiffToNow(oldMSTime));
@@ -6352,7 +6352,7 @@ void ObjectMgr::LoadQuestGreetingsLocales()
         return;
     }
 
-//    uint32 count = 0;
+    uint32 count = 0;
 
     do
     {
@@ -6389,7 +6389,7 @@ void ObjectMgr::LoadQuestGreetingsLocales()
         QuestGreetingLocale& data = _questGreetingLocaleStore[MAKE_PAIR32(type, id)];
         AddLocaleString(fields[3].Get<std::string>(), locale, data.Greeting);
 
-//        ++count;
+        ++count;
     } while (result->NextRow());
 
     LOG_INFO("server.loading", ">> Loaded {} quest greeting Locale Strings in {} ms", (uint32)_questGreetingLocaleStore.size(), GetMSTimeDiffToNow(oldMSTime));

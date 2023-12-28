@@ -419,7 +419,7 @@ public:
     }
 
     void LogoutPlayer(bool save);
-    void KickPlayer() { return this->KickPlayer("Unknown reason", true); }
+    void KickPlayer(bool setKicked = true) { return this->KickPlayer("Unknown reason", setKicked); }
     void KickPlayer(std::string const& reason, bool setKicked = true);
 
     // Returns true if all contained hyperlinks are valid

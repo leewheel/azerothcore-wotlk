@@ -2509,10 +2509,7 @@ void Creature::SendAIReaction(AiReaction reactionType)
 
     ((WorldObject*)this)->SendMessageToSet(&data, true);
 
-    if (reactionType == AI_REACTION_HOSTILE)
-        LOG_TRACE("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
-    else
-        LOG_DEBUG("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
+    LOG_DEBUG("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
 }
 
 void Creature::CallAssistance(Unit* target /*= nullptr*/)
@@ -3263,7 +3260,6 @@ void Creature::SetPosition(float x, float y, float z, float o)
     if (!Acore::IsValidMapCoord(x, y, z, o))
         return;
 
-    GetMap()->CreatureRelocation(this, x, y, z, o);
     //npcbot: send bot group update
     if (IsNPCBot())
         BotMgr::SetBotGroupUpdateFlag(ToCreature(), GROUP_UPDATE_FLAG_POSITION);
@@ -4077,7 +4073,6 @@ bool Creature::IsNPCBotPet() const
 
 bool Creature::IsNPCBotOrPet() const
 {
-    auto owner = GetOwner();
     return GetCreatureTemplate()->IsNPCBotOrPet();
 }
 

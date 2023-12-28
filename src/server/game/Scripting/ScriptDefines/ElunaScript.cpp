@@ -24,4 +24,3 @@ ElunaScript::ElunaScript(const char* name) : ScriptObject(name)
 }
 
 template class AC_GAME_API ScriptRegistry<ElunaScript>;
-

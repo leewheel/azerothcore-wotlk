@@ -52,27 +52,6 @@ public:
         return commandTable;
     }
 
-    static void _LocalizeQuest(std::string &questTitle, uint32 entry, uint32 loc)
-    {
-        std::wstring wnamepart;
-
-        QuestLocale const* questInfo = sObjectMgr->GetQuestLocale(entry);
-        if (!questInfo)
-            return;
-
-        if (questInfo->Title.size() > loc && !questInfo->Title[loc].empty())
-        {
-            const std::string title = questInfo->Title[loc];
-            if (Utf8FitTo(title, wnamepart))
-                questTitle = title;
-        }
-    }
-
-    static void _LocalizeQuest(Player const* forPlayer, std::string &questTitle, uint32 entry)
-    {
-        _LocalizeQuest(questTitle, entry, forPlayer->GetSession()->GetSessionDbLocaleIndex());
-    }
-
     static bool HandleQuestAdd(ChatHandler* handler, Quest const* quest, Optional<PlayerIdentifier> playerTarget)
     {
         if (!playerTarget)
@@ -102,7 +81,7 @@ public:
 
         if (Player* player = playerTarget->GetConnectedPlayer())
         {
-            _LocalizeQuest(player, questTitle, entry);
+            quest->GetLocalizeTitle(questTitle, player->GetSession()->GetSessionDbLocaleIndex());
             if (player->IsActiveQuest(entry))
             {
                 handler->SendErrorMessage(LANG_COMMAND_QUEST_ACTIVE, quest->GetTitle().c_str(), entry);
@@ -117,7 +96,7 @@ public:
         }
         else
         {
-            _LocalizeQuest(questTitle, entry, LOCALE_zhCN);
+            quest->GetLocalizeTitle(questTitle, LOCALE_zhCN);
             ObjectGuid::LowType guid = playerTarget->GetGUID().GetCounter();
             QueryResult result = CharacterDatabase.Query("SELECT 1 FROM character_queststatus WHERE guid = {} AND quest = {}", guid, entry);
 
@@ -181,7 +160,7 @@ public:
 
         if (Player* player = playerTarget->GetConnectedPlayer())
         {
-            _LocalizeQuest(player, questTitle, entry);
+            quest->GetLocalizeTitle(questTitle, player->GetSession()->GetSessionDbLocaleIndex());
             // remove all quest entries for 'entry' from quest log
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
@@ -206,7 +185,7 @@ public:
         }
         else
         {
-            _LocalizeQuest(questTitle, entry, LOCALE_zhCN);
+            quest->GetLocalizeTitle(questTitle, LOCALE_zhCN);
             ObjectGuid::LowType guid = playerTarget->GetGUID().GetCounter();
             CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
 
@@ -269,7 +248,7 @@ public:
 
         if (Player* player = playerTarget->GetConnectedPlayer())
         {
-            _LocalizeQuest(player, questTitle, entry);
+            quest->GetLocalizeTitle(questTitle, player->GetSession()->GetSessionDbLocaleIndex());
             // If player doesn't have the quest
             if (player->GetQuestStatus(entry) == QUEST_STATUS_NONE)
             {
@@ -371,7 +350,7 @@ public:
         }
         else
         {
-            _LocalizeQuest(questTitle, entry, LOCALE_zhCN);
+            quest->GetLocalizeTitle(questTitle, LOCALE_zhCN);
             ObjectGuid::LowType guid = playerTarget->GetGUID().GetCounter();
             QueryResult result = CharacterDatabase.Query("SELECT 1 FROM character_queststatus WHERE guid = {} AND quest = {}", guid, entry);
 
@@ -539,7 +518,7 @@ public:
 
         if (Player* player = playerTarget->GetConnectedPlayer())
         {
-            _LocalizeQuest(player, questTitle, entry);
+            quest->GetLocalizeTitle(questTitle, player->GetSession()->GetSessionDbLocaleIndex());
             // If player doesn't have the quest
             if (player->GetQuestStatus(entry) != QUEST_STATUS_COMPLETE)
             {
@@ -551,7 +530,7 @@ public:
         }
         else
         {
-            _LocalizeQuest(questTitle, entry, LOCALE_zhCN);
+            quest->GetLocalizeTitle(questTitle, LOCALE_zhCN);
             // Achievement criteria updates correctly the next time a quest is rewarded.
             // Titles are already awarded correctly the next time they login (only one quest awards title - 11549).
             // Rewarded talent points (Death Knights) and spells (e.g Druid forms) are also granted on login.

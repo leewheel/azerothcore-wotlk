@@ -65,6 +65,11 @@ enum Spells
     VOID_ZONE_VISUAL        = 69422
 };
 
+enum Say
+{
+    SAY_SOULS_LICH_KING_RAND_WHISPER = 5
+};
+
 BossBoundaryData const boundaries =
 {
     { DATA_LORD_MARROWGAR, new CircleBoundary(Position(-428.0f,2211.0f), 95.0) },
@@ -464,6 +469,9 @@ public:
                     break;
                 case NPC_THE_LICH_KING_VALITHRIA:
                     ValithriaLichKingGUID = creature->GetGUID();
+                    break;
+                case NPC_THE_LICH_KING_LH:
+                    TheLichKingLhGUID = creature->GetGUID();
                     break;
                 case NPC_GREEN_DRAGON_COMBAT_TRIGGER:
                     ValithriaTriggerGUID = creature->GetGUID();
@@ -1735,8 +1743,8 @@ public:
             data >> LichKingHeroicAvailable;
             data >> BloodPrinceTrashCount;
             data >> IsBuffAvailable;
-            SetData(DATA_BUFF_AVAILABLE, IsBuffAvailable);
             data >> IsSindragosaIntroDone;
+            SetData(DATA_BUFF_AVAILABLE, IsBuffAvailable);
         }
 
         void WriteSaveDataMore(std::ostringstream& data) override
@@ -1764,12 +1772,10 @@ public:
                     if (Player* player = players.begin()->GetSource())
                         if (player->GetQuestStatus(QUEST_A_FEAST_OF_SOULS) == QUEST_STATUS_INCOMPLETE)
                         {
-                            uint8 id = urand(0, 15);
-                            std::string const& text = sCreatureTextMgr->GetLocalizedChatString(NPC_THE_LICH_KING_LH, 0, 20 + id, 0, LOCALE_zhCN);
-                            WorldPacket data;
-                            ChatHandler::BuildChatPacket(data, CHAT_MSG_MONSTER_WHISPER, LANG_UNIVERSAL, ObjectGuid::Empty, player->GetGUID(), text, CHAT_TAG_NONE, "巫妖王");
-                            player->PlayDirectSound(17235 + id);
-                            player->SendDirectMessage(&data);
+                            if (Creature* theLichKing = instance->GetCreature(TheLichKingLhGUID))
+                            {
+                                theLichKing->AI()->Talk(SAY_SOULS_LICH_KING_RAND_WHISPER, player);
+                            }
                         }
             }
             else
@@ -2051,6 +2057,7 @@ public:
         ObjectGuid RimefangGUID;
         ObjectGuid TheLichKingTeleportGUID;
         ObjectGuid TheLichKingGUID;
+        ObjectGuid TheLichKingLhGUID;
         ObjectGuid HighlordTirionFordringGUID;
         ObjectGuid TerenasMenethilGUID;
         ObjectGuid ArthasPlatformGUID;
